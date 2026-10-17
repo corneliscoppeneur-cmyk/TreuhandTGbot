@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.wrangler/
+coverage/
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+!.env.example
+*.log
+
+# Local, never commit (contains secrets / private notes)
+token infos.txt
+treuhand vorhaben.txt
