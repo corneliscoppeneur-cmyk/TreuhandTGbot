@@ -65,6 +65,11 @@ const seller = wallet(state.sellerSeed);
 
 // ---- environment: live vars from wrangler.jsonc, local test secrets ----
 const vars = (JSON.parse(stripJsonc(readFileSync('wrangler.jsonc', 'utf8'))) as { vars: Record<string, string> }).vars;
+// E2E_ESPLORA: run against another signet, e.g. Mutinynet (https://mutinynet.com/api, faucet.mutinynet.com)
+if (process.env.E2E_ESPLORA) {
+  vars.ESPLORA_PRIMARY_URL = process.env.E2E_ESPLORA;
+  delete vars.ESPLORA_SECONDARY_URL;
+}
 const env = {
   ...vars,
   TELEGRAM_BOT_TOKEN: '123456789:AAEhBOweik9ai2o4z_LOCAL_E2E_ONLY_xxx',
@@ -144,7 +149,7 @@ function printSent(from = 0) {
 async function setup() {
   if (state.tradeId) return console.log(`Handel existiert bereits: #${state.tradeId}. Zum Neustart den Ordner .e2e löschen.`);
   await text(BUYER, '/newtrade');
-  for (const t of ['Signet-Testhandel', 'Live-Test des Treuhand-Bots', '0,0005', 'Test, keine echte Ware']) await text(BUYER, t);
+  for (const t of ['Signet-Testhandel', 'Live-Test des Treuhand-Bots', process.env.E2E_AMOUNT ?? '0,0001', 'Test, keine echte Ware']) await text(BUYER, t);
   await click(BUYER, 'n:role:buyer');
   await click(BUYER, 'n:confirm');
   const id = /Handel #([A-Z0-9]{8}) erstellt/.exec(sent.map((m) => m.text).join('\n'))?.[1];
