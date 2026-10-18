@@ -7,11 +7,14 @@ import type { Db, DbStatement } from '../../src/database/client.ts';
 type Value = null | number | bigint | string | Uint8Array;
 
 class Stmt implements DbStatement {
-  constructor(
-    private db: TestDb,
-    readonly sql: string,
-    readonly params: Value[] = [],
-  ) {}
+  private db: TestDb;
+  readonly sql: string;
+  readonly params: Value[];
+  constructor(db: TestDb, sql: string, params: Value[] = []) {
+    this.db = db;
+    this.sql = sql;
+    this.params = params;
+  }
   bind(...values: unknown[]): DbStatement {
     return new Stmt(
       this.db,

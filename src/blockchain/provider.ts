@@ -37,11 +37,11 @@ export type ProviderErrorKind = 'timeout' | 'http' | 'rate_limit' | 'invalid_res
 
 export class ProviderError extends Error {
   override name = 'ProviderError';
-  constructor(
-    readonly kind: ProviderErrorKind,
-    message: string,
-    readonly provider = '',
-  ) {
+  readonly kind: ProviderErrorKind;
+  readonly provider: string;
+  constructor(kind: ProviderErrorKind, message: string, provider = '') {
     super(message);
+    this.kind = kind;
+    this.provider = provider;
   }
 }

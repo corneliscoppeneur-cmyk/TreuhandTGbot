@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (src + tests)
+        run: npx tsc --noEmit -p tsconfig.json && npx tsc --noEmit -p tsconfig.test.json
+      - run: npm run lint
+      - run: npm run format:check
+      - name: Unit, integration and security tests
+        run: npm test
+      - name: Workers build (bundle check)
+        run: npm run build
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Secret scan (no tokens / private keys committed)
+        run: |
+          ! git grep -nE '[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}' -- ':!tests/**' ':!docs/**'
+          ! git grep -nE '\b[tx]prv[1-9A-HJ-NP-Za-km-z]{100,}' -- ':!tests/**'

@@ -13,10 +13,11 @@ function utxoKey(u: ChainUtxo): string {
  */
 export class CrossCheckedProvider implements BlockchainProvider {
   readonly name: string;
-  constructor(
-    private readonly primary: BlockchainProvider,
-    private readonly secondary: BlockchainProvider | null,
-  ) {
+  private readonly primary: BlockchainProvider;
+  private readonly secondary: BlockchainProvider | null;
+  constructor(primary: BlockchainProvider, secondary: BlockchainProvider | null) {
+    this.primary = primary;
+    this.secondary = secondary;
     this.name = secondary ? `${primary.name}+${secondary.name}` : primary.name;
   }
 
