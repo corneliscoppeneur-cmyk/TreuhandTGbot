@@ -139,7 +139,10 @@ export async function maybeStartAgreement(ctx: ServiceCtx, tradeId: string): Pro
   });
   return [s.buyer, s.seller, s.arbiter].map((chatId) => ({
     chatId,
-    text: `Handel #${tradeId}: Alle Parteien sind beigetreten. Bitte prüfe und bestätige die Bedingungen.`,
+    text:
+      `👥 Handel #${tradeId}: Alle drei Beteiligten sind dabei.\n\n` +
+      'Bitte lies jetzt die Bedingungen in Ruhe durch. Wenn alles stimmt, tippe auf „Akzeptieren“. ' +
+      'Erst wenn alle drei zugestimmt haben, geht es weiter.',
     buttons: [[{ text: '📜 Bedingungen prüfen', data: `t:${tradeId}:terms`, style: 'primary' as const }]],
   }));
 }
@@ -174,13 +177,23 @@ export async function agreeTerms(ctx: ServiceCtx, userId: number, tradeId: strin
     return signers.map((p) => ({
       chatId: p.telegram_user_id,
       text:
-        `Handel #${tradeId}: Alle haben zugestimmt. Nächster Schritt: öffentlichen Multisig-Schlüssel registrieren.\n\n` +
-        'Benötigt wird ein erweiterter öffentlicher Schlüssel (tpub) mit Key-Origin für eine neue, eigene Wallet ' +
-        '(z. B. Sparrow → Neue Wallet → Multisig-Keystore exportieren). Niemals Seed oder privaten Schlüssel senden!',
-      buttons: [[{ text: '🔑 Schlüssel registrieren', data: `t:${tradeId}:key`, style: 'primary' as const }]],
+        `✅ Handel #${tradeId}: Alle haben den Bedingungen zugestimmt.\n\n` +
+        'Jetzt wird das gemeinsame Treuhand-Konto gebaut. Dafür sendet jeder den öffentlichen Schlüssel aus seiner Wallet ' +
+        '(ungefährlich, wie eine Kontonummer).\n\n' +
+        '⚠️ Niemals deine Wiederherstellungswörter senden – die gehören nur dir.',
+      buttons: [
+        [{ text: '🔑 Schlüssel senden', data: `t:${tradeId}:key`, style: 'primary' as const }],
+        [{ text: '👛 Noch keine Wallet? Anleitung', data: 'm:wallet' }],
+      ],
     }));
   }
-  return [];
+  const missing = signers.filter((p) => p.agreed_hash !== a.trade.agreement_hash).length;
+  return [
+    {
+      chatId: userId,
+      text: `✅ Danke, deine Zustimmung ist gespeichert. Es fehlt noch ${missing === 1 ? '1 Person' : `${missing} Personen`}. Du wirst benachrichtigt.`,
+    },
+  ];
 }
 
 export async function cancelTrade(ctx: ServiceCtx, userId: number, tradeId: string): Promise<Notice[]> {

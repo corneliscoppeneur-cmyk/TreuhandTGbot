@@ -12,3 +12,4 @@ coverage/
 # Local, never commit (contains secrets / private notes)
 token infos.txt
 treuhand vorhaben.txt
+.deploy.secrets

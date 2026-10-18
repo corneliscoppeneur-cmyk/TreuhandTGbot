@@ -34,7 +34,7 @@ describe('full trade: creation → invite → agreement → multisig → funding
     expect(h.last(BUYER).text).toBeTypeOf('string');
 
     await signAndUpload(h, BUYER, 'buyer', psbt);
-    expect(h.last(BUYER).text).toMatch(/zweite Signatur|Signatur von/);
+    expect(h.last(BUYER).text).toMatch(/zweite Unterschrift|Unterschrift von/);
     await signAndUpload(h, SELLER, 'seller', psbt);
     const bc = h.button(SELLER, /^s:.*:bc$/);
     await h.click(SELLER, bc);

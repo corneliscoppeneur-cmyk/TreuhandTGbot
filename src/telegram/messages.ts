@@ -16,8 +16,37 @@ export function rich(markup: string): MessageContent {
 }
 
 export const MAIN_MENU = html(
-  `${b('₿ BTC TREUHAND')}\n\nSichere Bitcoin-Handelskoordination über ${b('2-von-3-Multisig')}.\n` +
-    `${i('Der Bot verwahrt keine Coins und keine Schlüssel. Testnetz: Signet.')}`,
+  `${b('₿ BTC TREUHAND')}\n` +
+    `${i('Sicher mit Bitcoin handeln – ohne dem Gegenüber blind vertrauen zu müssen.')}\n\n` +
+    `${b('So funktioniert es:')}\n` +
+    '1️⃣ Du legst einen Handel an und lädst Käufer bzw. Verkäufer und einen neutralen Schlichter ein.\n' +
+    '2️⃣ Der Käufer zahlt auf ein gemeinsames Treuhand-Konto. Es öffnet sich nur, wenn 2 der 3 Beteiligten zustimmen.\n' +
+    '3️⃣ Ist die Ware da, geben Käufer und Verkäufer das Geld gemeinsam frei. Bei Streit entscheidet der Schlichter.\n\n' +
+    `🔒 ${b('Der Bot hat nie Zugriff auf dein Geld')} – er hält keine Coins und keine Schlüssel.\n` +
+    `🧪 ${i('Testbetrieb: Es wird mit Test-Bitcoin (Signet) gehandelt, die keinen Wert haben.')}`,
+);
+
+/** Plain-language glossary, used in help and wherever a technical term first appears. */
+export const GLOSSARY =
+  `${b('Begriffe kurz erklärt')}\n` +
+  `• ${b('Treuhand-Konto (Multisig)')}: ein gemeinsames Bitcoin-Schließfach mit 3 Schlüsseln. 2 davon sind zum Öffnen nötig.\n` +
+  `• ${b('Öffentlicher Schlüssel (tpub)')}: wie eine Kontonummer – ungefährlich zu teilen. Damit wird das Schließfach gebaut.\n` +
+  `• ${b('Seed / Wiederherstellungswörter')}: dein Generalschlüssel. ${b('Niemals teilen')}, auch nicht mit dem Bot oder Support.\n` +
+  `• ${b('PSBT')}: ein Überweisungsentwurf. Deine Wallet zeigt ihn dir an, du prüfst ihn und unterschreibst.\n` +
+  `• ${b('Schlichter')}: neutrale dritte Person. Entscheidet nur im Streitfall und kann allein nie auszahlen.\n` +
+  `• ${b('Signet')}: Bitcoin-Testnetz. Coins haben keinen Wert – ideal zum Ausprobieren.`;
+
+/** Step-by-step wallet setup for non-technical users (Sparrow Wallet, free, Windows/Mac/Linux). */
+export const WALLET_GUIDE = html(
+  `${b('👛 Wallet einrichten (einmalig, ca. 5 Minuten)')}\n\n` +
+    `Du brauchst eine eigene Bitcoin-Wallet. Empfehlung: ${link('https://sparrowwallet.com/download/', 'Sparrow Wallet')} (kostenlos).\n\n` +
+    `${b('1.')} Sparrow installieren und öffnen.\n` +
+    `${b('2.')} Für den Test: ${i('Tools → Restart in → Signet')}.\n` +
+    `${b('3.')} ${i('File → New Wallet')}, Name z. B. „Treuhand-Handel“.\n` +
+    `${b('4.')} Oben ${i('Policy Type: Multi Signature')} wählen, dann unten ${i('New or Imported Software Wallet')}.\n` +
+    `${b('5.')} ${i('Generate New')} → die angezeigten Wörter auf Papier notieren (nie fotografieren, nie verschicken!) → bestätigen.\n` +
+    `${b('6.')} Sparrow zeigt jetzt ${i('Master fingerprint')}, ${i('Derivation')} und ${i('xpub/tpub')}. Diese drei Angaben brauchst du für den Bot.\n\n` +
+    quote(`Nur den öffentlichen Teil (tpub) an den Bot senden. ${b('Niemals')} die Wörter oder einen „tprv“.`),
 );
 
 export function privacyText(cfg: AppConfig): MessageContent {
@@ -38,18 +67,20 @@ export function privacyText(cfg: AppConfig): MessageContent {
 }
 
 export function feesHtml(cfg: AppConfig): string {
+  const example = 1_000_000n; // 0,01 BTC
+  const fee = (example * BigInt(cfg.commissionBps)) / 10_000n;
   return (
-    `${b('💸 Gebühren (Version 1)')}\n\n` +
-    `• Servicegebühr bei Auszahlung an den Verkäufer: ${b(formatBps(cfg.commissionBps))} des Handelsbetrags, als eigener, sichtbarer Output der Transaktion.\n` +
-    `• Servicegebühr bei Rückerstattung: ${b(formatBps(cfg.refundCommissionBps))}.\n` +
-    '• Streitfall: es gilt die Regel des Ergebnisses (Auszahlung oder Rückerstattung).\n' +
-    '• Netzwerkgebühr (Miner): trägt der Empfänger der Auszahlung; wird aus der aktuellen Gebührenschätzung berechnet.\n' +
-    `• Maximal ${esc(cfg.maxFeeRateSatVb)} sat/vB und höchstens ${esc(cfg.maxFeePercent)} % des Betrags; sonst wird keine Transaktion erstellt.\n` +
-    '• Gebühren unter der Dust-Grenze entfallen.\n' +
-    '• Jede Änderung von Beträgen oder Gebühren erfordert neue Signaturen.\n\n' +
+    `${b('💸 Was kostet das?')}\n\n` +
+    `• ${b('Servicegebühr:')} ${b(formatBps(cfg.commissionBps))} vom Handelsbetrag, nur wenn der Verkäufer ausgezahlt wird.\n` +
+    `• ${b('Bei Rückzahlung an den Käufer:')} ${b(formatBps(cfg.refundCommissionBps))} Servicegebühr.\n` +
+    `• ${b('Netzwerkgebühr:')} kleine Gebühr an das Bitcoin-Netzwerk, zahlt der Empfänger der Auszahlung. Höhe hängt von der aktuellen Auslastung ab.\n` +
+    '• Bei Streit gilt die Regel des Ergebnisses (Auszahlung oder Rückzahlung).\n\n' +
+    `${b('Beispiel')} bei ${esc(formatBtc(example))} BTC und Auszahlung an den Verkäufer:\n` +
+    `Servicegebühr ${esc(formatBtc(fee))} BTC · Netzwerkgebühr ca. 0,00000300 BTC · Verkäufer erhält ca. ${esc(formatBtc(example - fee - 300n))} BTC\n\n` +
+    `🛡 ${i(`Schutz vor Abzocke: Ist die Netzwerkgebühr gerade über ${cfg.maxFeeRateSatVb} sat/vB oder über ${cfg.maxFeePercent} % des Betrags, wird keine Auszahlung erstellt – einfach später erneut versuchen.`)}\n\n` +
     quote(
-      'Transparenz: Die Provision ist technisch NICHT garantiert. Käufer und Verkäufer können gemeinsam ohne den Bot signieren. ' +
-        'Das ist eine bewusste Folge des nichtverwahrenden Modells. Netzwerkgebühren auf Mainnet sind nie kostenlos.',
+      'Ehrlich gesagt: Die Servicegebühr ist technisch nicht erzwingbar. Käufer und Verkäufer könnten gemeinsam auch ohne den Bot auszahlen. ' +
+        'Das ist der Preis dafür, dass der Bot nie Zugriff auf euer Geld hat.',
     )
   );
 }
@@ -59,23 +90,94 @@ export function feesText(cfg: AppConfig): MessageContent {
 }
 
 export const HELP = html(
-  `${b('❓ Hilfe und Sicherheit')}\n\n` +
-    'Ablauf: Handel anlegen → Käufer, Verkäufer und Schlichter einladen → Bedingungen bestätigen → ' +
-    'jede Partei registriert einen öffentlichen Multisig-Schlüssel (tpub) → alle prüfen die Adresse in der eigenen Wallet → ' +
-    'Käufer zahlt ein → Lieferung → Auszahlung per PSBT mit 2 von 3 Signaturen.\n\n' +
-    `${b('Der Bot:')}\n• verwahrt keine BTC und keine privaten Schlüssel\n• fragt niemals nach Seed oder privatem Schlüssel\n` +
-    '• kann BTC on-chain nicht einfrieren oder zurückholen\n• kann Multisig nur mit kompatibler Wallet nutzen (siehe Doku)\n\n' +
-    `Befehle: /newtrade /mytrades ${esc('/trade <ID>')} ${esc('/invites <ID>')} /disputes /fees /privacy /support /status /cancel`,
+  `${b('❓ So läuft ein Handel ab')}\n\n` +
+    `${b('1. Anlegen')} – Titel, Beschreibung, Betrag und Bedingungen eingeben, eigene Rolle wählen.\n` +
+    `${b('2. Einladen')} – Link und Zugangscode an Käufer/Verkäufer und an einen neutralen Schlichter schicken (am besten getrennt).\n` +
+    `${b('3. Zustimmen')} – alle drei lesen die Bedingungen und tippen auf „Akzeptieren“.\n` +
+    `${b('4. Schlüssel')} – jeder sendet seinen öffentlichen Wallet-Schlüssel. Daraus entsteht das gemeinsame Treuhand-Konto.\n` +
+    `${b('5. Prüfen')} – jeder vergleicht die Treuhand-Adresse in seiner eigenen Wallet und bestätigt.\n` +
+    `${b('6. Einzahlen')} – der Käufer überweist den genauen Betrag. Der Bot meldet, sobald das Geld sicher angekommen ist.\n` +
+    `${b('7. Liefern')} – der Verkäufer liefert und meldet es im Bot.\n` +
+    `${b('8. Freigeben')} – der Käufer gibt frei, beide unterschreiben die Auszahlung in ihrer Wallet, der Bot sendet sie ab.\n\n` +
+    `${b('Probleme?')} Tippe im Handel auf „Probleme mit Admin“. Dann stoppt der Bot alle Auszahlungen und der Schlichter entscheidet.\n\n` +
+    `${GLOSSARY}\n\n` +
+    `${b('Befehle')}: /newtrade neuer Handel · /mytrades meine Handel · /fees Gebühren · /privacy Datenschutz · /support Hilfe · /cancel Eingabe abbrechen`,
 );
 
 export const SECURITY = html(
-  `${b('🛡 Sicherheitsinformationen')}\n\n` +
-    '• Ein kompromittiertes Telegram-Konto allein kann keine BTC auszahlen – dafür sind 2 Wallet-Signaturen nötig.\n' +
-    '• Nutze für jeden Handel ein neues Wallet-Konto (Account-Index).\n' +
-    '• Prüfe Adresse und PSBT immer in deiner eigenen Wallet.\n' +
-    '• Der Schlichter muss eine wirklich unabhängige Person mit eigener Wallet sein.\n' +
-    '• Admins und Support fragen niemals nach Seeds, Schlüsseln oder Zahlungen.',
+  `${b('🛡 Deine Sicherheit')}\n\n` +
+    `• ${b('Dein Geld liegt nie beim Bot.')} Es liegt im gemeinsamen Treuhand-Konto, das nur mit 2 von 3 Unterschriften aufgeht.\n` +
+    '• Selbst wenn jemand dein Telegram-Konto übernimmt, kann er ohne deine Wallet kein Geld bewegen.\n' +
+    `• ${b('Niemand fragt dich nach deinen Wiederherstellungswörtern')} – weder der Bot noch der Support noch ein Admin. Wer das tut, ist ein Betrüger.\n` +
+    '• Prüfe vor jeder Unterschrift in deiner Wallet: Stimmen Empfänger und Betrag?\n' +
+    '• Nutze für jeden Handel ein neues Wallet-Konto.\n' +
+    '• Wähle als Schlichter eine Person, der beide Seiten vertrauen und die mit keiner Seite verbandelt ist.\n' +
+    '• Sensible Infos (z. B. Lieferadresse) nie im Gruppenchat posten, sondern per verschlüsseltem Einmal-Link.',
 );
+
+/** One clear instruction: what this user should do now in this trade. */
+export function nextStep(t: TradeRow, role: Role | null, me: ParticipantRow | null, sigCount: number): string {
+  const signer = role === 'buyer' || role === 'seller' || role === 'arbiter';
+  switch (t.status) {
+    case 'INVITING':
+      return role === 'buyer' || role === 'seller'
+        ? 'Lade die fehlenden Beteiligten ein: Tippe auf „Einladungen“ und schicke Link und Code getrennt.'
+        : 'Warte, bis alle Beteiligten beigetreten sind.';
+    case 'AGREEMENT':
+      return signer && me?.agreed_hash !== t.agreement_hash
+        ? 'Lies die Bedingungen und tippe auf „Bedingungen prüfen & akzeptieren“.'
+        : 'Warte, bis alle den Bedingungen zugestimmt haben.';
+    case 'KEY_SETUP':
+      return signer && !me?.address_verified_at
+        ? 'Sende deinen öffentlichen Wallet-Schlüssel und prüfe danach die Treuhand-Adresse. Noch keine Wallet? Tippe auf „Wallet einrichten“.'
+        : 'Warte, bis alle ihren Schlüssel gesendet und die Adresse bestätigt haben.';
+    case 'READY_TO_FUND':
+      return role === 'buyer'
+        ? 'Überweise jetzt den genauen Betrag auf die Treuhand-Adresse (siehe „Zahlungsstatus“).'
+        : 'Warte auf die Einzahlung des Käufers. Du wirst benachrichtigt.';
+    case 'FUNDING_SEEN':
+      return 'Die Zahlung ist unterwegs. Sobald das Netzwerk sie bestätigt, geht es weiter – meist innerhalb von 10–30 Minuten.';
+    case 'FUNDED':
+      return role === 'seller'
+        ? 'Das Geld liegt sicher im Treuhand-Konto. Liefere jetzt und tippe dann auf „Lieferung erfolgt“.'
+        : role === 'buyer'
+          ? 'Das Geld liegt sicher im Treuhand-Konto. Warte auf die Lieferung. Ist alles in Ordnung, gib die Zahlung frei.'
+          : 'Das Geld liegt sicher im Treuhand-Konto. Warte auf die Lieferung.';
+    case 'FULFILLMENT':
+      return role === 'buyer'
+        ? 'Der Verkäufer hat geliefert. Prüfe die Ware. Passt alles, tippe auf „Freigabe an Verkäufer“, sonst auf „Probleme mit Admin“.'
+        : 'Warte, bis der Käufer die Lieferung prüft und freigibt.';
+    case 'RELEASE_REQUESTED':
+      return role === 'seller'
+        ? 'Gib jetzt deine Empfangsadresse an, damit die Auszahlung vorbereitet wird.'
+        : 'Warte auf die Empfangsadresse des Verkäufers.';
+    case 'REFUND_REQUESTED':
+      return role === 'buyer' ? 'Gib jetzt deine Empfangsadresse für die Rückzahlung an.' : 'Warte auf die Empfangsadresse des Käufers.';
+    case 'SIGNING':
+      if (!signer) return 'Die Auszahlung wird gerade unterschrieben.';
+      return sigCount >= 2
+        ? 'Zwei Unterschriften liegen vor. Tippe auf „Transaktion senden“, um auszuzahlen.'
+        : 'Lade die Auszahlungs-Datei in deine Wallet, prüfe Empfänger und Betrag, unterschreibe und schicke die Datei hier zurück („Signierte PSBT hochladen“).';
+    case 'DISPUTED':
+      return role === 'arbiter'
+        ? 'Ein Streitfall wurde gemeldet. Tippe auf „Streitfall bearbeiten“.'
+        : 'Der Schlichter wurde informiert. Du kannst eine Stellungnahme senden.';
+    case 'ARBITRATION':
+      return role === 'arbiter'
+        ? 'Prüfe den Fall und entscheide: Auszahlung an Verkäufer oder Rückzahlung an Käufer.'
+        : 'Der Schlichter prüft den Fall.';
+    case 'BROADCAST':
+      return 'Die Auszahlung ist gesendet. Nach der Bestätigung durch das Netzwerk ist der Handel abgeschlossen.';
+    case 'COMPLETE':
+      return 'Fertig! Der Verkäufer wurde ausgezahlt.';
+    case 'REFUNDED':
+      return 'Fertig! Der Käufer hat sein Geld zurück.';
+    case 'NEEDS_REVIEW':
+      return 'Etwas Ungewöhnliches ist passiert (siehe Grund). Es wird nichts automatisch ausgezahlt. Bitte Support kontaktieren.';
+    default:
+      return 'Dieser Handel ist beendet.';
+  }
+}
 
 function roleStatus(t: TradeRow, parts: ParticipantRow[], r: Role): string {
   const p = parts.find((x) => x.role === r);
@@ -86,30 +188,36 @@ function roleStatus(t: TradeRow, parts: ParticipantRow[], r: Role): string {
 }
 
 /** Trade overview as rich message (table); falls back to HTML automatically. */
-export function tradeView(t: TradeRow, parts: ParticipantRow[], myRole: Role | null): MessageContent {
+export function tradeView(
+  t: TradeRow,
+  parts: ParticipantRow[],
+  myRole: Role | null,
+  me: ParticipantRow | null = null,
+  sigCount = 0,
+): MessageContent {
   const others = parts.filter((p) => p.role === 'mediator' || p.role === 'observer').length;
   const markup =
-    `<h3>₿ BTC-TREUHAND · #${esc(t.id)}</h3>` +
-    `<p>${b(esc(t.title))}</p>` +
+    `<h3>₿ Handel #${esc(t.id)} · ${esc(t.title)}</h3>` +
+    `<blockquote>👉 ${b('Dein nächster Schritt:')} ${esc(nextStep(t, myRole, me, sigCount))}</blockquote>` +
     table(
       [
+        ['Status', b(esc(STATE_LABEL_DE[t.status]))],
         ['Betrag', `${b(esc(formatBtc(BigInt(t.amount_sats))))} BTC`],
-        ['Provision', esc(formatBps(t.commission_bps))],
-        ['Netzwerkgebühr', 'separat'],
-        ['Sicherheit', '2-von-3-Multisig'],
-        ['Netzwerk', esc(t.network)],
+        ['Deine Rolle', myRole ? ROLE_LABEL_DE[myRole] : '–'],
+        ['Servicegebühr', esc(formatBps(t.commission_bps))],
         ['Erstellt', time(t.created_at, 'dt')],
       ],
       false,
     ) +
     table([
-      ['Rolle', 'Status'],
+      ['Beteiligte', 'Stand'],
       ['Käufer', roleStatus(t, parts, 'buyer')],
       ['Verkäufer', roleStatus(t, parts, 'seller')],
       ['Schlichter', roleStatus(t, parts, 'arbiter')],
     ]) +
-    `<p>Weitere Teilnehmer: ${others}${myRole ? ` · Deine Rolle: ${b(ROLE_LABEL_DE[myRole])}` : ''}</p>` +
-    `<p>Status: ${b(esc(STATE_LABEL_DE[t.status]))}${t.status === 'NEEDS_REVIEW' && t.review_reason ? `<br>Grund: ${esc(t.review_reason)}` : ''}</p>`;
+    (others ? `<p>Weitere Teilnehmer (nur lesend): ${others}</p>` : '') +
+    (t.status === 'NEEDS_REVIEW' && t.review_reason ? `<p>⚠️ Grund: ${esc(t.review_reason)}</p>` : '') +
+    `<p>${i('Das Geld liegt nie beim Bot – nur im gemeinsamen Treuhand-Konto (2 von 3 Unterschriften nötig).')}</p>`;
   return rich(markup);
 }
 

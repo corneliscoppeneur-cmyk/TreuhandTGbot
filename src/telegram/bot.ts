@@ -46,7 +46,15 @@ import { logError } from '../security/redaction.ts';
 import { clearFlow, getFlow, setFlow, type Flow } from './conversation.ts';
 import { b, code, esc, explorerAddressUrl, i, link, quote, time } from './format.ts';
 import { mainMenu, supportMenu, tradeButtons } from './keyboards.ts';
-import { feesHtml, feesText, HELP, html, MAIN_MENU, privacyText, SECURITY, termsView, tradeView } from './messages.ts';
+import { feesHtml, feesText, HELP, html, MAIN_MENU, privacyText, SECURITY, termsView, tradeView, WALLET_GUIDE } from './messages.ts';
+
+const HELP_BUTTONS: Button[][] = [
+  [{ text: '➕ Jetzt Handel starten', data: 'm:new', style: 'primary' }],
+  [
+    { text: '👛 Wallet einrichten', data: 'm:wallet' },
+    { text: '🛡 Sicherheit', data: 'm:security' },
+  ],
+];
 import { sendContent } from './send.ts';
 
 const TRADE_ID_RE = /^[A-Z0-9]{8}$/;
@@ -129,19 +137,50 @@ export function createBot(svc: ServiceCtx): Bot {
 
   // 1) Idempotency: every update_id is processed at most once.
   bot.use(async (ctx, next) => {
+    // metadata only (type, command/callback prefix, chat type) – never message content
+    const kind = Object.keys(ctx.update).find((k) => k !== 'update_id') ?? 'unknown';
+    const cmd = ctx.message?.text?.match(/^\/\w+/)?.[0] ?? (ctx.callbackQuery?.data ? `cb:${ctx.callbackQuery.data.split(':')[0]}` : '');
+    const msgId = ctx.message?.message_id ?? ctx.callbackQuery?.message?.message_id ?? '-';
+    console.log(`[update] id=${ctx.update.update_id} type=${kind} ${cmd} chat=${ctx.chat?.type ?? '-'} msg=${msgId}`);
+    const now = svc.now();
     const r = await db
       .prepare('INSERT OR IGNORE INTO processed_telegram_updates (update_id, processed_at) VALUES (?, ?)')
-      .bind(ctx.update.update_id, svc.now())
+      .bind(ctx.update.update_id, now)
       .run();
     if (r.meta.changes === 0) return;
+
+    // Same user action delivered again under a new update_id: message by chat+message id,
+    // button by user+data within 3 s (also protects against double clicks).
+    let actionKey: string | null = null;
+    let window = 0;
+    if (ctx.message && ctx.chat) actionKey = `m:${ctx.chat.id}:${ctx.message.message_id}`;
+    else if (ctx.callbackQuery?.data && ctx.from) {
+      actionKey = `c:${ctx.from.id}:${ctx.callbackQuery.data}`;
+      window = 3;
+    }
+    if (actionKey) {
+      const a = await db
+        .prepare(
+          `INSERT INTO recent_actions (key, at) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET at = excluded.at WHERE ? > 0 AND excluded.at - recent_actions.at >= ?`,
+        )
+        .bind(actionKey, now, window, window)
+        .run();
+      if (a.meta.changes === 0) {
+        console.log(`[update] duplicate action ignored id=${ctx.update.update_id}`);
+        if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => undefined);
+        return;
+      }
+    }
     try {
       await next();
     } catch (e) {
       // allow Telegram to retry after transient failures (e.g. D1 outage)
       await db
-        .prepare('DELETE FROM processed_telegram_updates WHERE update_id = ?')
-        .bind(ctx.update.update_id)
-        .run()
+        .batch([
+          db.prepare('DELETE FROM processed_telegram_updates WHERE update_id = ?').bind(ctx.update.update_id),
+          ...(actionKey ? [db.prepare('DELETE FROM recent_actions WHERE key = ? AND at = ?').bind(actionKey, now)] : []),
+        ])
         .catch(() => undefined);
       throw e;
     }
@@ -198,7 +237,11 @@ export function createBot(svc: ServiceCtx): Bot {
       ? ((await db.prepare('SELECT COUNT(*) AS n FROM psbt_signatures WHERE session_id = ?').bind(session.id).first<{ n: number }>())?.n ??
         0)
       : 0;
-    await reply(ctx, tradeView(a.trade, parts, a.role), tradeButtons(svc.cfg, a.trade, a.participant, a.role, session, sigs));
+    await reply(
+      ctx,
+      tradeView(a.trade, parts, a.role, a.participant, sigs),
+      tradeButtons(svc.cfg, a.trade, a.participant, a.role, session, sigs),
+    );
   }
 
   async function showTrades(ctx: Context, userId: number) {
@@ -216,7 +259,10 @@ export function createBot(svc: ServiceCtx): Bot {
     await setFlow(db, userId, { flow: 'newtrade', step: 'title', data: {} }, svc.now());
     await reply(
       ctx,
-      prompt('Neuer Handel – Schritt 1/6\nTitel des Handels (max. 80 Zeichen):\n\n(/cancel bricht ab)', 'z. B. Laptop Modell X'),
+      prompt(
+        '➕ Neuer Handel – Schritt 1 von 5\n\nWie soll der Handel heißen? Ein kurzer Titel, den alle Beteiligten wiedererkennen (max. 80 Zeichen).\n\n(Mit /cancel kannst du jederzeit abbrechen.)',
+        'z. B. MacBook Pro 14 gebraucht',
+      ),
     );
   }
 
@@ -263,9 +309,11 @@ export function createBot(svc: ServiceCtx): Bot {
         await setFlow(db, userId, { flow: 'invite_code', step: 'code', data: { inviteId: r.inviteId } }, svc.now());
         await reply(ctx, {
           ...html(
-            `${b(`✉️ Einladung zu Handel #${esc(r.tradeId)}`)} als ${b(ROLE_LABEL_DE[r.role])}.\n\n` +
-              'Bitte den Zugangscode eingeben, den du separat vom Einladenden erhalten hast.\n\n' +
-              quote('Diese Einladung ist jetzt an dein Telegram-Konto gebunden.'),
+            `${b(`✉️ Du wurdest zu Handel #${esc(r.tradeId)} eingeladen`)} – als ${b(ROLE_LABEL_DE[r.role])}.\n\n` +
+              'Hier wird ein Bitcoin-Handel sicher abgewickelt: Das Geld liegt in einem gemeinsamen Treuhand-Konto, ' +
+              'das sich nur mit 2 von 3 Unterschriften öffnet. Der Bot selbst hat nie Zugriff darauf.\n\n' +
+              `${b('Bitte gib jetzt den Zugangscode ein')}, den du getrennt vom Link bekommen hast (8 Zeichen).\n\n` +
+              quote('Die Einladung ist ab jetzt an dein Telegram-Konto gebunden und kann von niemand anderem genutzt werden.'),
           ),
           forceReply: { placeholder: 'Zugangscode (8 Zeichen)' },
         });
@@ -276,7 +324,7 @@ export function createBot(svc: ServiceCtx): Bot {
       await showMenu(ctx);
     }),
   );
-  bot.command('help', (ctx) => reply(ctx, HELP, [[{ text: 'Sicherheitsinformationen', data: 'm:security' }]]));
+  bot.command('help', (ctx) => reply(ctx, HELP, HELP_BUTTONS));
   bot.command('privacy', (ctx) => reply(ctx, privacyText(svc.cfg)));
   bot.command('fees', (ctx) => reply(ctx, feesText(svc.cfg)));
   bot.command('support', (ctx) => reply(ctx, html(b('🛟 Support')), supportMenu(svc.cfg)));
@@ -344,7 +392,7 @@ export function createBot(svc: ServiceCtx): Bot {
       const userId = ctx.from.id;
       let m: RegExpExecArray | null;
 
-      if ((m = /^m:(new|trades|invites|disputes|fees|help|support|security|menu)$/.exec(data))) {
+      if ((m = /^m:(new|trades|invites|disputes|fees|help|support|security|menu|wallet)$/.exec(data))) {
         switch (m[1]) {
           case 'new':
             return startNewTrade(ctx, userId);
@@ -356,11 +404,13 @@ export function createBot(svc: ServiceCtx): Bot {
           case 'fees':
             return void (await reply(ctx, feesText(svc.cfg)));
           case 'help':
-            return void (await reply(ctx, HELP, [[{ text: 'Sicherheitsinformationen', data: 'm:security' }]]));
+            return void (await reply(ctx, HELP, HELP_BUTTONS));
           case 'support':
             return void (await reply(ctx, html(b('🛟 Support')), supportMenu(svc.cfg)));
           case 'security':
             return void (await reply(ctx, SECURITY));
+          case 'wallet':
+            return void (await reply(ctx, WALLET_GUIDE, [[{ text: '⬅️ Zurück zum Menü', data: 'm:menu' }]]));
           default:
             return showMenu(ctx);
         }
@@ -454,10 +504,16 @@ export function createBot(svc: ServiceCtx): Bot {
         await setFlow(db, userId, { flow: 'key', step: 'key', data: { tradeId } }, svc.now());
         return void (await reply(ctx, {
           ...html(
-            `${b(`🔑 Öffentlichen Multisig-Schlüssel für #${esc(tradeId)} senden`)}\n\n` +
-              `Format: ${code(`[fingerprint/48h/${svc.net.coinType}h/<konto>h/2h]tpub…`)}\n\n` +
-              'Sparrow: Neue Wallet → Multisig → Keystore „Watch-only/xPub“ → Key-Origin und tpub kopieren.\n' +
-              quote(`${b('Nutze ein NEUES Konto nur für diesen Handel. NIEMALS Seed oder tprv senden!')}`),
+            `${b(`🔑 Handel #${esc(tradeId)}: Deinen öffentlichen Schlüssel senden`)}\n\n` +
+              'Damit wird das gemeinsame Treuhand-Konto gebaut. Der öffentliche Schlüssel ist ungefährlich – damit kann niemand Geld bewegen.\n\n' +
+              `${b('So findest du ihn in Sparrow:')}\n` +
+              `Neue Multisig-Wallet anlegen (siehe „Wallet einrichten“). Im Keystore stehen ${i('Master fingerprint')}, ${i('Derivation')} und ${i('xpub')}. ` +
+              'Schick sie mir in dieser Form in einer Nachricht:\n' +
+              `${code(`[fingerprint/48h/${svc.net.coinType}h/0h/2h]tpub…`)}\n` +
+              `Beispiel: ${code('[a1b2c3d4/48h/1h/0h/2h]tpubDF…')}\n\n` +
+              quote(
+                `${b('Niemals')} die Wiederherstellungswörter senden und nie etwas, das mit „tprv“ beginnt. Nutze für jeden Handel ein neues Wallet-Konto.`,
+              ),
           ),
           forceReply: { placeholder: '[fingerprint/48h/1h/0h/2h]tpub…' },
         }));
@@ -478,7 +534,7 @@ export function createBot(svc: ServiceCtx): Bot {
         return void (await reply(
           ctx,
           prompt(
-            `Sende jetzt deine ${svc.net.name}-Empfangsadresse für #${tradeId} (nur hier privat).`,
+            `📥 Wohin soll das Geld gehen? Sende hier eine Empfangsadresse aus deiner Wallet (Sparrow: Reiter „Receive“).${svc.net.name === 'signet' ? ' Für den Test eine Signet-Adresse, beginnt mit tb1.' : ''}`,
             svc.net.name === 'signet' ? 'tb1q…' : 'bc1q…',
           ),
         ));
@@ -543,7 +599,10 @@ export function createBot(svc: ServiceCtx): Bot {
       await setFlow(db, userId, { flow: 'psbt', step: 'psbt', data: { sessionId } }, svc.now());
       return void (await reply(
         ctx,
-        prompt('Sende jetzt die in deiner Wallet signierte PSBT (Base64-Text oder .psbt-Datei).', 'cHNidP8… oder Datei'),
+        prompt(
+          '✍️ Schick mir jetzt die in deiner Wallet unterschriebene Datei (.psbt) – einfach als Datei anhängen. Alternativ den kopierten Text einfügen.',
+          'Datei anhängen oder Text einfügen',
+        ),
       ));
     }
     if (action === 'show') {
@@ -622,10 +681,18 @@ export function createBot(svc: ServiceCtx): Bot {
       creatorRole: d.role!,
     });
     await clearFlow(db, userId);
-    await reply(ctx, `Handel #${t.id} erstellt. Lade jetzt die anderen Parteien ein (Käufer/Verkäufer und ein unabhängiger Schlichter).`, [
-      [{ text: '✉️ Einladungen erstellen', data: `t:${t.id}:inv`, style: 'primary' }],
-      [{ text: 'Handel öffnen', data: `t:${t.id}:view` }],
-    ]);
+    await reply(
+      ctx,
+      html(
+        `✅ ${b(`Handel #${esc(t.id)} erstellt`)}\n\nAls Nächstes lädst du ein:\n` +
+          `• dein Gegenüber (${d.role === 'buyer' ? 'Verkäufer' : 'Käufer'})\n` +
+          `• einen neutralen ${b('Schlichter')} – eine Person, der ihr beide vertraut. Er greift nur bei Streit ein und kann allein nie auszahlen.`,
+      ),
+      [
+        [{ text: '✉️ Einladungen erstellen', data: `t:${t.id}:inv`, style: 'primary' }],
+        [{ text: 'Handel öffnen', data: `t:${t.id}:view` }],
+      ],
+    );
   }
 
   // ---------- free text / documents (dialog steps) ----------
@@ -638,12 +705,24 @@ export function createBot(svc: ServiceCtx): Bot {
         if (f.step === 'title') {
           d.title = text.slice(0, 200);
           await setFlow(db, userId, { flow: 'newtrade', step: 'description', data: d }, now);
-          return void (await reply(ctx, prompt('Schritt 2/6 – Beschreibung (keine persönlichen Daten):', 'Was wird gehandelt?')));
+          return void (await reply(
+            ctx,
+            prompt(
+              'Schritt 2 von 5 – Was genau wird gehandelt?\n\nBeschreibe Ware oder Leistung so, dass es später keine Missverständnisse gibt (Zustand, Menge, Modell). Bitte keine Adressen oder Telefonnummern.',
+              'z. B. 2022, 16 GB RAM, kleine Kratzer',
+            ),
+          ));
         }
         if (f.step === 'description') {
           d.description = text.slice(0, 2000);
           await setFlow(db, userId, { flow: 'newtrade', step: 'amount', data: d }, now);
-          return void (await reply(ctx, prompt('Schritt 3/6 – BTC-Betrag (z. B. 0,01 oder 1000000 sat):', '0,01')));
+          return void (await reply(
+            ctx,
+            prompt(
+              'Schritt 3 von 5 – Wie viel Bitcoin?\n\nDiesen Betrag zahlt der Käufer auf das Treuhand-Konto. Beispiel: 0,01 (= 0,01 BTC) oder 1000000 sat.',
+              '0,01',
+            ),
+          ));
         }
         if (f.step === 'amount') {
           d.amountSats = parseBtcAmount(text).toString();
@@ -651,15 +730,15 @@ export function createBot(svc: ServiceCtx): Bot {
           return void (await reply(
             ctx,
             prompt(
-              `Betrag: ${formatBtc(BigInt(d.amountSats))} BTC\n\nSchritt 4/6 – Handelsbedingungen (Lieferung, Fristen, Rückgabe):`,
-              'Lieferung binnen 7 Tagen …',
+              `✅ Betrag: ${formatBtc(BigInt(d.amountSats))} BTC\n\nSchritt 4 von 5 – Welche Bedingungen gelten?\n\nZ. B. Lieferfrist, Versandart, wann die Ware als angekommen gilt, Rückgabe. Daran orientiert sich der Schlichter im Streitfall.`,
+              'Versand in 3 Tagen, versichert …',
             ),
           ));
         }
         if (f.step === 'terms') {
           d.terms = text.slice(0, 4000);
           await setFlow(db, userId, { flow: 'newtrade', step: 'role', data: d }, now);
-          return void (await reply(ctx, 'Schritt 5/6 – Deine Rolle:', [
+          return void (await reply(ctx, 'Schritt 5 von 5 – Bist du in diesem Handel Käufer oder Verkäufer?', [
             [
               { text: '🛒 Ich bin Käufer', data: 'n:role:buyer', style: 'primary' },
               { text: '📦 Ich bin Verkäufer', data: 'n:role:seller', style: 'primary' },

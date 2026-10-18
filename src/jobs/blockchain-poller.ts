@@ -207,13 +207,15 @@ async function pollFunding(ctx: ServiceCtx, t: TradeRow, tip: number, out: Notic
       ...(await notifySigners(
         ctx,
         fresh,
-        `Handel #${t.id}: Einzahlung bestätigt (${ev.minConfirmations} Bestätigungen). Status: FINANZIERT.`,
+        `💰 Handel #${t.id}: Das Geld ist sicher im Treuhand-Konto angekommen und bestätigt.
+
+Ab jetzt kann es nur noch mit 2 von 3 Unterschriften bewegt werden.`,
       )),
       ...(s.seller
         ? [
             {
               chatId: s.seller,
-              text: `Handel #${t.id}: Du kannst jetzt liefern und anschließend „Lieferung erfolgt“ melden.`,
+              text: `📦 Handel #${t.id}: Du kannst jetzt liefern. Danach tippe auf „Lieferung erfolgt“, damit der Käufer prüfen und freigeben kann.`,
               buttons: [[{ text: '📦 Lieferung erfolgt', data: `t:${t.id}:delivered`, style: 'success' as const }]],
             },
           ]
@@ -237,8 +239,8 @@ async function pollFunding(ctx: ServiceCtx, t: TradeRow, tip: number, out: Notic
         chatId: s.buyer,
         text:
           ev.verdict === 'partial'
-            ? `Handel #${t.id}: Teilzahlung erkannt (${formatBtc(ev.totalSats)} von ${formatBtc(BigInt(t.amount_sats))} BTC). Bitte Restbetrag senden.`
-            : `Handel #${t.id}: Einzahlung gesehen, wartet auf ${ctx.cfg.minConfirmations} Bestätigung(en).`,
+            ? `⏳ Handel #${t.id}: Teilzahlung erkannt – ${formatBtc(ev.totalSats)} von ${formatBtc(BigInt(t.amount_sats))} BTC. Bitte den Rest (${formatBtc(BigInt(t.amount_sats) - ev.totalSats)} BTC) an dieselbe Adresse senden.`
+            : `⏳ Handel #${t.id}: Deine Zahlung ist unterwegs. Sobald das Bitcoin-Netzwerk sie bestätigt hat (meist 10–30 Minuten), melde ich mich.`,
       });
     }
     return INTERVAL.funding;
@@ -381,7 +383,7 @@ async function pollBroadcast(ctx: ServiceCtx, t: TradeRow, tip: number, out: Not
     ...(await notifySigners(
       ctx,
       fresh,
-      `Handel #${t.id}: ${to === 'COMPLETE' ? 'Auszahlung' : 'Rückerstattung'} bestätigt. Handel ${STATE_LABEL_DE[to]}.`,
+      `🎉 Handel #${t.id} ist abgeschlossen: ${to === 'COMPLETE' ? 'Der Verkäufer wurde ausgezahlt' : 'Der Käufer hat sein Geld zurück'} – vom Bitcoin-Netzwerk bestätigt. Danke fürs Nutzen!`,
     )),
     ...groupNotice(fresh, STATE_LABEL_DE[to]),
   );

@@ -178,8 +178,16 @@ export async function submitAccessCode(ctx: ServiceCtx, userId: number, inviteId
     }));
   notices.push({
     chatId: userId,
-    text: `Beigetreten: Handel #${inv.trade_id} als ${ROLE_LABEL_DE[inv.role]}.`,
-    buttons: [[{ text: 'Handel öffnen', data: `t:${inv.trade_id}:view` }]],
+    text:
+      `✅ Willkommen! Du bist jetzt ${ROLE_LABEL_DE[inv.role]} in Handel #${inv.trade_id}.\n\n` +
+      'Öffne den Handel, um Titel, Betrag und Bedingungen zu sehen. Dort steht immer auch dein nächster Schritt.' +
+      (SIGNING_ROLES.has(inv.role)
+        ? '\n\nTipp: Du brauchst gleich eine eigene Bitcoin-Wallet. Noch keine? Tippe auf „Wallet einrichten“.'
+        : ''),
+    buttons: [
+      [{ text: '📂 Handel öffnen', data: `t:${inv.trade_id}:view`, style: 'primary' }],
+      ...(SIGNING_ROLES.has(inv.role) ? [[{ text: '👛 Wallet einrichten', data: 'm:wallet' }]] : []),
+    ],
   });
   return [...notices, ...(await maybeStartAgreement(ctx, inv.trade_id))];
 }

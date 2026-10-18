@@ -13,6 +13,7 @@ export async function runCleanup(ctx: ServiceCtx): Promise<void> {
     ctx.db.prepare(`UPDATE invites SET status = 'expired' WHERE status = 'active' AND expires_at <= ?`).bind(now),
     ctx.db.prepare('DELETE FROM processed_telegram_updates WHERE processed_at < ?').bind(now - 7 * 86400),
     ctx.db.prepare('DELETE FROM conversation_state WHERE expires_at < ?').bind(now),
+    ctx.db.prepare('DELETE FROM recent_actions WHERE at < ?').bind(now - 86400),
     ctx.db.prepare('DELETE FROM access_attempts WHERE created_at < ?').bind(now - 30 * 86400),
     ctx.db.prepare('DELETE FROM blockchain_observations WHERE created_at < ?').bind(now - 30 * 86400),
     ctx.db

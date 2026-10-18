@@ -34,14 +34,16 @@ export function escrowFromRow(m: MultisigRow): EscrowScript {
 /** Multisig configuration for independent verification, with copy button and confirm/deny buttons. */
 export function verificationMessage(m: MultisigRow, tradeId: string): MessageContent {
   const markup =
-    `${b(`🔐 Handel #${esc(tradeId)} – Multisig-Konfiguration`)} (2-von-3, P2WSH)\n\n` +
-    `${b('Descriptor')} (tippen zum Kopieren):\n${pre(m.descriptor)}\n` +
-    `${b('Erwartete Einzahlungsadresse')} (Index 0):\n${code(m.address)}\n\n` +
-    quote(
-      'So prüfst du unabhängig: In Sparrow „Datei → Neue Wallet → Descriptor einfügen“ (oder Bitcoin Core: ' +
-        `${code('deriveaddresses "<descriptor>" "[0,0]"')}). Die erste Empfangsadresse muss exakt übereinstimmen und ` +
-        'dein eigener Schlüssel muss enthalten sein. Erst dann bestätigen.',
-    );
+    `${b(`🔐 Handel #${esc(tradeId)}: Das Treuhand-Konto ist fertig`)}\n\n` +
+    'Bevor jemand Geld einzahlt, prüft jeder selbst, dass das Konto echt ist und sein eigener Schlüssel drinsteckt. ' +
+    'So kann niemand – auch nicht der Bot – eine falsche Adresse unterschieben.\n\n' +
+    `${b('Adresse des Treuhand-Kontos:')}\n${code(m.address)}\n\n` +
+    `${b('So prüfst du (Sparrow):')}\n` +
+    '1. Den Code unten antippen (wird kopiert).\n' +
+    `2. In Sparrow: ${i('File → New Wallet')} → Name „Handel ${esc(tradeId)}“ → ${i('Edit → Paste from clipboard')} bzw. Descriptor einfügen.\n` +
+    `3. Im Reiter ${i('Receive')} muss genau diese Adresse als erste stehen.\n\n` +
+    `${b('Kontodaten (Descriptor)')} – antippen zum Kopieren:\n${pre(m.descriptor)}\n` +
+    quote('Stimmt die Adresse? Dann „Adresse stimmt überein“. Weicht sie ab: „Stimmt NICHT“ – und auf keinen Fall einzahlen.');
   return {
     text: toPlain(markup),
     html: markup,
@@ -57,11 +59,14 @@ export function verificationMessage(m: MultisigRow, tradeId: string): MessageCon
 export function depositMessage(tradeId: string, amountSats: bigint, address: string, netName: 'signet' | 'mainnet'): MessageContent {
   const markup =
     `${b(`💰 Handel #${esc(tradeId)}: Bereit zur Einzahlung`)}\n\n` +
-    `Betrag: ${b(`exakt ${esc(formatBtc(amountSats))} BTC`)} (${esc(netName)})\n` +
-    `Adresse (2-von-3-Multisig):\n${code(address)}\n\n` +
-    'Bitte genau diesen Betrag in EINER oder mehreren Zahlungen senden. Die Summe muss exakt stimmen; ' +
-    'Überzahlungen führen zu manueller Prüfung. Netzwerkgebühren der Einzahlung trägst du.\n\n' +
-    i('Hinweis: Blockchain-APIs können abgefragte Adressen beobachten. Bitcoin-Adressen sind nicht anonym.');
+    'Alle haben das Treuhand-Konto geprüft. Du kannst jetzt sicher einzahlen.\n\n' +
+    `Betrag: ${b(`genau ${esc(formatBtc(amountSats))} BTC`)}${netName === 'signet' ? ' (Test-Bitcoin)' : ''}\n` +
+    `An diese Adresse:\n${code(address)}\n\n` +
+    `${b('Wichtig:')}\n` +
+    '• Genau diesen Betrag senden – die Gebühr deiner Wallet kommt obendrauf.\n' +
+    '• Zu viel gesendet? Dann wird nichts automatisch weitergeleitet, der Handel wird erst geprüft.\n' +
+    '• Der Bot meldet sich, sobald das Geld angekommen und bestätigt ist (meist 10–30 Minuten).\n\n' +
+    i('Datenschutz: Bitcoin-Adressen sind öffentlich einsehbar und nicht anonym.');
   return {
     text: toPlain(markup),
     html: markup,
@@ -133,7 +138,12 @@ export async function registerKey(ctx: ServiceCtx, userId: number, tradeId: stri
       .all<SignerRow>()
   ).results;
   if (all.length < 3)
-    return [{ chatId: userId, text: `Schlüssel gespeichert (Fingerprint ${key.fingerprint}). Warte auf die anderen Parteien.` }];
+    return [
+      {
+        chatId: userId,
+        text: `✅ Dein Schlüssel ist gespeichert (Wallet-Kennung ${key.fingerprint}). Sobald alle drei ihren Schlüssel gesendet haben, bekommst du die Adresse des Treuhand-Kontos zum Prüfen.`,
+      },
+    ];
 
   const cfg = buildMultisig(all.map(rowToKey), ctx.net);
   const created = await ctx.db.batch([
@@ -182,7 +192,7 @@ export async function confirmAddress(ctx: ServiceCtx, userId: number, tradeId: s
   const parts = await listParticipants(ctx.db, tradeId);
   const signers = parts.filter((p) => isSigningRole(p.role));
   if (signers.length !== 3 || !signers.every((p) => p.address_verified_at !== null)) {
-    return [{ chatId: userId, text: 'Bestätigt. Warte auf die anderen Parteien.' }];
+    return [{ chatId: userId, text: '✅ Danke, deine Prüfung ist gespeichert. Sobald alle bestätigt haben, kann der Käufer einzahlen.' }];
   }
   const trade = (await getTrade(ctx.db, tradeId))!;
   await transition(ctx.db, {
@@ -203,7 +213,10 @@ export async function confirmAddress(ctx: ServiceCtx, userId: number, tradeId: s
   const s = signerIds(parts);
   const out: Notice[] = signers
     .filter((p) => p.role !== 'buyer')
-    .map((p) => ({ chatId: p.telegram_user_id, text: `Handel #${tradeId}: Konfiguration bestätigt. Warte auf Einzahlung des Käufers.` }));
+    .map((p) => ({
+      chatId: p.telegram_user_id,
+      text: `🔐 Handel #${tradeId}: Alle haben das Treuhand-Konto bestätigt. Jetzt ist der Käufer mit der Einzahlung dran – du wirst benachrichtigt, sobald das Geld angekommen ist.`,
+    }));
   out.push({ chatId: s.buyer!, ...depositMessage(tradeId, BigInt(trade.amount_sats), m.address, ctx.net.name) });
   return out;
 }

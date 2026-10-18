@@ -5,15 +5,20 @@ import type { SessionRow, TradeRow, ParticipantRow } from '../database/repo.ts';
 
 export function mainMenu(): Button[][] {
   return [
-    [{ text: '➕ Neuen Handel erstellen', data: 'm:new', style: 'primary' }],
-    [{ text: 'Meine Handelsfälle', data: 'm:trades' }],
-    [{ text: 'Einladungen', data: 'm:invites' }],
-    [{ text: 'Offene Streitfälle', data: 'm:disputes' }],
+    [{ text: '➕ Neuen Handel starten', data: 'm:new', style: 'primary' }],
+    [{ text: '📂 Meine Handel', data: 'm:trades' }],
     [
-      { text: 'Gebühren', data: 'm:fees' },
-      { text: 'Hilfe und Sicherheit', data: 'm:help' },
+      { text: '❓ So funktioniert’s', data: 'm:help' },
+      { text: '👛 Wallet einrichten', data: 'm:wallet' },
     ],
-    [{ text: 'Support', data: 'm:support' }],
+    [
+      { text: '💸 Gebühren', data: 'm:fees' },
+      { text: '🛡 Sicherheit', data: 'm:security' },
+    ],
+    [
+      { text: '⚖️ Streitfälle', data: 'm:disputes' },
+      { text: '🛟 Support', data: 'm:support' },
+    ],
   ];
 }
 
@@ -71,7 +76,10 @@ export function tradeButtons(
     rows.push([{ text: '✅ Bedingungen prüfen & akzeptieren', data: `t:${id}:terms`, style: 'success' }]);
   }
   if (s === 'KEY_SETUP' && can(role, 'register_key') && !me?.address_verified_at) {
-    rows.push([{ text: '🔑 Schlüssel / Adresse prüfen', data: `t:${id}:key`, style: 'primary' }]);
+    rows.push([
+      { text: '🔑 Schlüssel senden / Adresse prüfen', data: `t:${id}:key`, style: 'primary' },
+      { text: '👛 Wallet einrichten', data: 'm:wallet' },
+    ]);
   }
   if (s === 'FUNDED' && can(role, 'mark_delivered'))
     rows.push([{ text: '📦 Lieferung erfolgt', data: `t:${id}:delivered`, style: 'success' }]);

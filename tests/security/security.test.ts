@@ -322,3 +322,56 @@ describe('amounts and redaction', () => {
     expect(looksLikeMnemonic('abandon ability able about above absent absorb abstract absurd abuse access accident')).toBe(true);
   });
 });
+
+describe('duplicate deliveries of the same user action', () => {
+  const msg = (updateId: number, messageId: number) => ({
+    update_id: updateId,
+    message: {
+      message_id: messageId,
+      date: 0,
+      chat: { id: BUYER, type: 'private' },
+      from: { id: BUYER, is_bot: false, first_name: 'x' },
+      text: '/start',
+      entities: [{ type: 'bot_command', offset: 0, length: 6 }],
+    },
+  });
+  const cb = (updateId: number) => ({
+    update_id: updateId,
+    callback_query: {
+      id: String(updateId),
+      from: { id: BUYER, is_bot: false, first_name: 'x' },
+      chat_instance: '1',
+      data: 'm:fees',
+      message: { message_id: 1, date: 0, chat: { id: BUYER, type: 'private' }, text: 'x' },
+    },
+  });
+
+  it('same message under two update ids is answered once', async () => {
+    const h = new Harness();
+    await h.post(msg(500, 42));
+    await h.post(msg(501, 42));
+    expect(h.to(BUYER)).toHaveLength(1);
+    await h.post(msg(502, 43));
+    expect(h.to(BUYER)).toHaveLength(2);
+  });
+
+  it('double click within 3 s is answered once, a later click again', async () => {
+    const h = new Harness();
+    await h.post(cb(600));
+    h.clock += 1;
+    await h.post(cb(601));
+    expect(h.to(BUYER)).toHaveLength(1);
+    h.clock += 5;
+    await h.post(cb(602));
+    expect(h.to(BUYER)).toHaveLength(2);
+  });
+
+  it('a failed action can be retried (dedupe key is released)', async () => {
+    const h = new Harness();
+    h.apiFailing = true;
+    expect((await h.post(msg(700, 77))).status).toBe(500);
+    h.apiFailing = false;
+    await h.post(msg(700, 77));
+    expect(h.to(BUYER)).toHaveLength(1);
+  });
+});

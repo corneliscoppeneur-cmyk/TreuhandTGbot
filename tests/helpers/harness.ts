@@ -237,6 +237,7 @@ export class Harness {
   }
 
   nextUpdateId(): number {
+    this.clock += 5; // real users need a few seconds per action (double-click window is 3 s)
     return this.updateId++;
   }
 
@@ -244,7 +245,7 @@ export class Harness {
     const entities = text.startsWith('/') ? [{ type: 'bot_command', offset: 0, length: text.split(' ')[0]!.length }] : undefined;
     return this.post({
       update_id: this.nextUpdateId(),
-      message: { message_id: 1, date: this.clock, chat, from: this.user(userId), text, ...(entities ? { entities } : {}) },
+      message: { message_id: this.updateId, date: this.clock, chat, from: this.user(userId), text, ...(entities ? { entities } : {}) },
     });
   }
 

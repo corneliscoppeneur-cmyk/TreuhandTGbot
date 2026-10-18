@@ -15,7 +15,7 @@
       "binding": "DB",
       "database_name": "escrow",
       // Replace after `wrangler d1 create escrow` (see docs/DEPLOYMENT.md)
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "d54e7977-0b0f-4834-8f7b-1b9426deedfa",
       "migrations_dir": "migrations",
     },
   ],
@@ -23,15 +23,15 @@
   // Non-secret configuration. Secrets (TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
   // INVITE_HMAC_SECRET) are set with `wrangler secret put` and never committed.
   "vars": {
-    "TELEGRAM_BOT_USERNAME": "YourEscrowBot",
+    "TELEGRAM_BOT_USERNAME": "EscrowGerman_bot",
     "BITCOIN_NETWORK": "signet",
     "ALLOW_MAINNET": "false",
     "SUPPORT_BOT_URL": "https://t.me/GruppennetzwerkKontakt_bot",
     "CRYPTGEON_URL": "https://cryptgeon.org",
     "DEFAULT_COMMISSION_BPS": "100",
     "REFUND_COMMISSION_BPS": "0",
-    // Operator's own, externally managed receive address (signet). Not an escrow key.
-    "COMMISSION_ADDRESS": "tb1qreplace-with-your-own-signet-address",
+    // Operator's own receive address (signet). PLACEHOLDER (BIP-173 test vector) – replace with your own tb1… address.
+    "COMMISSION_ADDRESS": "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx",
     "MIN_CONFIRMATIONS_SIGNET": "1",
     "MIN_CONFIRMATIONS_MAINNET": "3",
     "BLOCKCHAIN_PROVIDER": "esplora",

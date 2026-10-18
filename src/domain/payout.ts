@@ -29,7 +29,7 @@ import { newSessionId } from '../security/tokens.ts';
 import { logError } from '../security/redaction.ts';
 import { formatBtc, formatSats } from './amount.ts';
 import type { MessageContent, Notice, ServiceCtx } from './context.ts';
-import { b, code, esc, explorerTxUrl, pre, table, time, toPlain } from '../telegram/format.ts';
+import { b, code, esc, explorerTxUrl, i, pre, table, time, toPlain } from '../telegram/format.ts';
 import { UserError } from './context.ts';
 import { commissionSats, formatBps } from './fees.ts';
 import { escrowFromRow } from './keys.ts';
@@ -54,7 +54,9 @@ export async function markDelivered(ctx: ServiceCtx, userId: number, tradeId: st
   return [
     {
       chatId: s.buyer!,
-      text: `Handel #${tradeId}: Der Verkäufer meldet die Lieferung. Bitte prüfen. Wenn alles passt: Freigabe anfordern. Bei Problemen: Streitfall.`,
+      text: `📦 Handel #${tradeId}: Der Verkäufer hat die Lieferung gemeldet.
+
+Bitte prüfe die Ware. Ist alles in Ordnung, gib die Zahlung frei. Gibt es ein Problem, tippe auf „Probleme mit Admin“ – dann wird nichts ausgezahlt, bis der Schlichter entschieden hat.`,
       buttons: [
         [{ text: '✅ Freigabe an Verkäufer', data: `t:${tradeId}:release`, style: 'success' as const }],
         [{ text: 'Probleme mit Admin', data: `t:${tradeId}:dispute`, style: 'danger' as const }],
@@ -95,12 +97,17 @@ export async function askRecipientAddress(ctx: ServiceCtx, trade: TradeRow, kind
   return [
     {
       chatId: recipient,
-      text: `Handel #${trade.id}: ${label} vorbereitet. Bitte sende hier privat deine ${ctx.net.name}-Empfangsadresse.`,
+      text: `📥 Handel #${trade.id}: ${label} wird vorbereitet.
+
+Wohin soll das Geld? Bitte gib eine Empfangsadresse aus deiner Wallet an (in Sparrow: Reiter „Receive“).${ctx.net.name === 'signet' ? ' Für den Test eine Signet-Adresse (beginnt mit tb1).' : ''}`,
       buttons: [[{ text: '📥 Empfangsadresse angeben', data: `t:${trade.id}:addr`, style: 'primary' as const }]],
     },
     ...[s.buyer, s.seller, s.arbiter]
       .filter((id): id is number => id !== undefined && id !== recipient)
-      .map((chatId) => ({ chatId, text: `Handel #${trade.id}: ${label} angefordert. Warte auf Empfangsadresse.` })),
+      .map((chatId) => ({
+        chatId,
+        text: `⏳ Handel #${trade.id}: ${label} angefordert. Sobald der Empfänger seine Adresse angibt, bekommst du die Auszahlung zum Unterschreiben.`,
+      })),
     ...groupNotice(trade, kind === 'release' ? 'FREIGABE ANGEFORDERT' : 'RÜCKERSTATTUNG ANGEFORDERT'),
   ];
 }
@@ -250,8 +257,11 @@ async function psbtNotices(ctx: ServiceCtx, trade: TradeRow, session: SessionRow
         chatId,
         // PSBT as tap-to-copy code block (if short) plus as .psbt file for the wallet
         ...(inline
-          ? { text: `PSBT:\n${session.base_psbt}`, html: `${b('PSBT')} (tippen zum Kopieren):\n${pre(session.base_psbt)}` }
-          : { text: 'PSBT-Datei:' }),
+          ? {
+              text: `${signGuide().text}\n\n${session.base_psbt}`,
+              html: `${signGuide().html}\n\n${b('Auszahlungs-Entwurf als Text')} (antippen = kopieren):\n${pre(session.base_psbt)}`,
+            }
+          : signGuide()),
         document: { filename: `trade-${trade.id}-${session.id}.psbt`, content: session.base_psbt },
         buttons,
       },
@@ -323,7 +333,7 @@ export async function submitSignedPsbt(ctx: ServiceCtx, userId: number, sessionI
   if ((stored?.n ?? 0) < 2) {
     return signerChats.map((chatId) => ({
       chatId,
-      text: `Handel #${session.trade_id}: Signatur von ${who} geprüft und gespeichert. Es fehlt noch eine zweite Signatur.`,
+      text: `✍️ Handel #${session.trade_id}: Unterschrift von ${who} ist eingegangen und geprüft. Es fehlt noch eine zweite Unterschrift.`,
     }));
   }
   // Finalization runs in a separate request (send button / cron) to keep each Worker invocation's CPU time low.
@@ -333,8 +343,10 @@ export async function submitSignedPsbt(ctx: ServiceCtx, userId: number, sessionI
   return signerChats.map((chatId) => ({
     chatId,
     text:
-      `Handel #${session.trade_id}: Signatur von ${who} geprüft. 2 von 3 gültigen Signaturen liegen vor (txid ${session.txid}).` +
-      (ctx.cfg.automaticBroadcast ? ' Die Transaktion wird automatisch gesendet.' : ' Eine berechtigte Partei kann sie jetzt senden.'),
+      `✍️ Handel #${session.trade_id}: Unterschrift von ${who} ist eingegangen. Damit liegen 2 gültige Unterschriften vor.` +
+      (ctx.cfg.automaticBroadcast
+        ? ' Die Auszahlung wird automatisch gesendet.'
+        : ' Tippe auf „Transaktion senden“, um die Auszahlung abzuschicken.'),
     ...(ctx.cfg.automaticBroadcast
       ? {}
       : { buttons: [[{ text: '🚀 Transaktion senden', data: `s:${session.id}:bc`, style: 'success' as const }]] }),
@@ -473,4 +485,17 @@ export function sentMessage(tradeId: string, txid: string, netName: 'signet' | '
       ],
     ],
   };
+}
+
+/** How to sign the payout in a wallet, in plain language (Sparrow). */
+function signGuide(): MessageContent {
+  const markup =
+    `${b('✍️ So unterschreibst du die Auszahlung (Sparrow)')}\n` +
+    '1. Die Datei unten speichern (oder den Text antippen, wird kopiert).\n' +
+    `2. In Sparrow die Wallet dieses Handels öffnen → ${i('File → Open Transaction')} → Datei wählen (oder ${i('From Clipboard')}).\n` +
+    '3. Prüfen: Empfänger und Beträge müssen genau wie in der Übersicht oben sein.\n' +
+    `4. ${i('Finalize Transaction for Signing')} → ${i('Sign')}.\n` +
+    `5. ${i('Save Transaction')} und die Datei hier zurückschicken (Button „Signierte PSBT hochladen“).\n\n` +
+    i('Nicht in Sparrow senden („Broadcast“) – das macht der Bot, sobald 2 Unterschriften da sind.');
+  return { text: toPlain(markup), html: markup };
 }

@@ -113,7 +113,7 @@ describe('Telegram UX', () => {
   it('verification shows descriptor as code block with green/red buttons', async () => {
     const h = new Harness();
     await setupFundedTrade(h);
-    const v = h.to(ARBITER).find((m) => m.text.includes('Multisig-Konfiguration'))!;
+    const v = h.to(ARBITER).find((m) => m.text.includes('Treuhand-Konto ist fertig'))!;
     expect(v.raw).toMatch(/<pre>wsh\(sortedmulti\(2,/);
     expect(v.buttons.find((b) => b.data?.includes(':verify:'))?.style).toBe('success');
     expect(v.buttons.find((b) => b.data?.endsWith(':verifyfail'))?.style).toBe('danger');

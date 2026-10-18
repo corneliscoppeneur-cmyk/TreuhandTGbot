@@ -1,13 +1,40 @@
 /**
  * Registers the Telegram webhook for the deployed Worker.
- * Usage (values from your environment, never committed):
- *   TELEGRAM_BOT_TOKEN=... TELEGRAM_WEBHOOK_SECRET=... WORKER_URL=https://<name>.<account>.workers.dev npm run set-webhook
+ * Usage: npm run set-webhook
+ * - TELEGRAM_BOT_TOKEN: from env, otherwise asked for (input hidden)
+ * - TELEGRAM_WEBHOOK_SECRET: from env, otherwise from the git-ignored .deploy.secrets
+ * - WORKER_URL: from env, otherwise the workers.dev URL of this project
  */
-export {};
+import { existsSync, readFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 
-const token = process.env.TELEGRAM_BOT_TOKEN;
-const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
-const workerUrl = process.env.WORKER_URL?.replace(/\/+$/, '');
+function askHidden(question: string): Promise<string> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+    const out = rl as unknown as { _writeToOutput: (s: string) => void; output: NodeJS.WriteStream };
+    out._writeToOutput = (s: string) => {
+      // print only the prompt and line breaks, never the typed characters
+      if (s.includes(question) || s === '\r\n' || s === '\n') out.output.write(s);
+    };
+    rl.question(question, (answer) => {
+      rl.close();
+      process.stdout.write('\n');
+      resolve(answer.trim());
+    });
+  });
+}
+
+function fromDeploySecrets(key: string): string | undefined {
+  if (!existsSync('.deploy.secrets')) return undefined;
+  const line = readFileSync('.deploy.secrets', 'utf8')
+    .split(/\r?\n/)
+    .find((l) => l.startsWith(`${key}=`));
+  return line?.slice(key.length + 1).trim();
+}
+
+const token = process.env.TELEGRAM_BOT_TOKEN || (await askHidden('Bot-Token von BotFather einfügen (Eingabe unsichtbar): '));
+const secret = process.env.TELEGRAM_WEBHOOK_SECRET || fromDeploySecrets('TELEGRAM_WEBHOOK_SECRET');
+const workerUrl = (process.env.WORKER_URL || 'https://btc-telegram-escrow.cornelis-coppeneur.workers.dev').replace(/\/+$/, '');
 
 if (!token || !secret || !workerUrl) {
   console.error('Set TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET and WORKER_URL');
