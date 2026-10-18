@@ -13,7 +13,7 @@ export async function inviteAndJoin(h: Harness, tradeId: string, role: string, u
   await h.click(inviter, `i:${tradeId}:${role}`);
   const msg = h.last(inviter).text;
   const token = /start=i_([A-Za-z0-9_-]{43})/.exec(msg)![1]!;
-  const code = /Zugangscode: ([A-Z0-9]{8})/.exec(msg)![1]!;
+  const code = /Zugangscode[^:]*: ([A-Z0-9]{8})/.exec(msg)![1]!;
   await h.text(userId, `/start i_${token}`);
   await h.text(userId, code);
   return { token, code };

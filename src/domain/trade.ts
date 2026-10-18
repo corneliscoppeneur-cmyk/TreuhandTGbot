@@ -140,7 +140,7 @@ export async function maybeStartAgreement(ctx: ServiceCtx, tradeId: string): Pro
   return [s.buyer, s.seller, s.arbiter].map((chatId) => ({
     chatId,
     text: `Handel #${tradeId}: Alle Parteien sind beigetreten. Bitte prüfe und bestätige die Bedingungen.`,
-    buttons: [[{ text: 'Bedingungen prüfen', data: `t:${tradeId}:terms` }]],
+    buttons: [[{ text: '📜 Bedingungen prüfen', data: `t:${tradeId}:terms`, style: 'primary' as const }]],
   }));
 }
 
@@ -177,7 +177,7 @@ export async function agreeTerms(ctx: ServiceCtx, userId: number, tradeId: strin
         `Handel #${tradeId}: Alle haben zugestimmt. Nächster Schritt: öffentlichen Multisig-Schlüssel registrieren.\n\n` +
         'Benötigt wird ein erweiterter öffentlicher Schlüssel (tpub) mit Key-Origin für eine neue, eigene Wallet ' +
         '(z. B. Sparrow → Neue Wallet → Multisig-Keystore exportieren). Niemals Seed oder privaten Schlüssel senden!',
-      buttons: [[{ text: 'Schlüssel registrieren', data: `t:${tradeId}:key` }]],
+      buttons: [[{ text: '🔑 Schlüssel registrieren', data: `t:${tradeId}:key`, style: 'primary' as const }]],
     }));
   }
   return [];

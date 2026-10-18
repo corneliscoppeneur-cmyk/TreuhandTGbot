@@ -153,11 +153,7 @@ describe('chain anomalies after funding', () => {
     await h.click(BUYER, `t:${tradeId}:release`);
     await h.click(SELLER, `t:${tradeId}:addr`);
     await h.text(SELLER, testAddress('seller-payout'));
-    const psbt = [...h.to(BUYER)]
-      .reverse()
-      .find((m) => m.text.includes('PSBT:\n'))!
-      .text.split('PSBT:\n')[1]!
-      .trim();
+    const psbt = h.psbt(BUYER);
     for (const [id, role] of [
       [BUYER, 'buyer'],
       [SELLER, 'seller'],

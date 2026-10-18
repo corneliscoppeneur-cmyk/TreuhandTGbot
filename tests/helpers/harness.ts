@@ -12,6 +12,7 @@ import type { Env } from '../../src/config/env.ts';
 import { handleFetch, handleScheduled, WEBHOOK_PATH } from '../../src/app.ts';
 import { TestDb } from './d1.ts';
 import { testAddress } from './escrow.ts';
+import { toPlain } from '../../src/telegram/format.ts';
 
 export const WEBHOOK_SECRET = 'test-webhook-secret-0123456789abcdef';
 
@@ -109,12 +110,28 @@ export class FakeChain implements BlockchainProvider {
   }
 }
 
+export interface SentButton {
+  text: string;
+  data?: string;
+  url?: string;
+  copy?: string;
+  style?: string;
+  disabled?: boolean;
+}
+
 export interface SentMessage {
   method: string;
   chatId: number;
+  /** Plain text (markup stripped) – what the user reads. */
   text: string;
-  buttons: { text: string; data?: string; url?: string }[];
+  /** Raw markup as sent (HTML or rich HTML). */
+  raw: string;
+  parseMode?: string;
+  buttons: SentButton[];
   document?: boolean;
+  protect?: boolean;
+  ephemeralFor?: number;
+  forceReply?: boolean;
 }
 
 export class Harness {
@@ -125,6 +142,10 @@ export class Harness {
   private updateId = 1;
   env: Env;
   apiFailing = false;
+  /** Simulate clients/servers without sendRichMessage support. */
+  richUnsupported = false;
+  /** Simulate chats where ephemeral messages are not available. */
+  ephemeralUnsupported = false;
 
   constructor(envOver: Partial<Record<keyof Env, string>> = {}) {
     this.env = testEnv(envOver);
@@ -144,15 +165,44 @@ export class Harness {
         const m = /name="chat_id"\r\n\r\n(-?\d+)/.exec(text);
         payload = { chat_id: m ? Number(m[1]) : 0 };
       }
-      const kb =
-        (payload.reply_markup as { inline_keyboard?: { text: string; callback_data?: string; url?: string }[][] } | undefined)
-          ?.inline_keyboard ?? [];
+      type RawButton = {
+        text: string;
+        callback_data?: string;
+        url?: string;
+        copy_text?: { text: string };
+        style?: string;
+        disabled?: object;
+      };
+      const markup = payload.reply_markup as { inline_keyboard?: RawButton[][]; force_reply?: boolean } | undefined;
+      const ephemeral = payload.ephemeral_message_parameters as { receiver_user_id?: number } | undefined;
+      const err = (description: string) =>
+        new Response(JSON.stringify({ ok: false, error_code: 400, description }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        });
+      if (method === 'sendRichMessage' && this.richUnsupported) return err('Bad Request: method not supported');
+      if (ephemeral && this.ephemeralUnsupported) return err('Bad Request: ephemeral messages are not available');
+      const raw =
+        method === 'sendRichMessage' ? String((payload.rich_message as { html?: string })?.html ?? '') : String(payload.text ?? '');
+      const markupUsed = method === 'sendRichMessage' || payload.parse_mode === 'HTML';
       this.sent.push({
         method,
         chatId: Number(payload.chat_id),
-        text: String(payload.text ?? ''),
-        buttons: kb.flat().map((b) => ({ text: b.text, data: b.callback_data, url: b.url })),
+        text: markupUsed ? toPlain(raw) : raw,
+        raw,
+        parseMode: payload.parse_mode as string | undefined,
+        buttons: (markup?.inline_keyboard ?? []).flat().map((b) => ({
+          text: b.text,
+          data: b.callback_data,
+          url: b.url,
+          copy: b.copy_text?.text,
+          style: b.style,
+          disabled: b.disabled !== undefined,
+        })),
         document: method === 'sendDocument',
+        protect: payload.protect_content === true,
+        ephemeralFor: ephemeral?.receiver_user_id,
+        forceReply: markup?.force_reply === true,
       });
       return new Response(
         JSON.stringify({
@@ -233,6 +283,15 @@ export class Harness {
       if (b) return b.data!;
     }
     throw new Error(`no button ${pattern} for ${chatId}`);
+  }
+
+  /** Latest PSBT (base64) sent to a chat. */
+  psbt(chatId: number): string {
+    for (const m of [...this.to(chatId)].reverse()) {
+      const hit = /cHNidP8[A-Za-z0-9+/=]+/.exec(m.text);
+      if (hit) return hit[0];
+    }
+    throw new Error(`no PSBT for ${chatId}`);
   }
 
   async trade(id: string) {

@@ -214,7 +214,7 @@ async function pollFunding(ctx: ServiceCtx, t: TradeRow, tip: number, out: Notic
             {
               chatId: s.seller,
               text: `Handel #${t.id}: Du kannst jetzt liefern und anschließend „Lieferung erfolgt“ melden.`,
-              buttons: [[{ text: 'Lieferung erfolgt', data: `t:${t.id}:delivered` }]],
+              buttons: [[{ text: '📦 Lieferung erfolgt', data: `t:${t.id}:delivered`, style: 'success' as const }]],
             },
           ]
         : []),

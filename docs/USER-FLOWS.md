@@ -34,3 +34,21 @@ Empfänger gibt privat Adresse an → Bot erstellt PSBT und zeigt Zusammenfassun
 
 ## Befehle
 `/start /help /newtrade /mytrades /trade <ID> /invites <ID> /disputes /support /privacy /fees /status [ID] /cancel`, in Gruppen `/link <ID>`, `/status <ID>`.
+
+## Telegram-Darstellung (Bot API 10.3)
+
+| Funktion | Einsatz |
+|---|---|
+| Rich Messages (`sendRichMessage`) | Handelsübersicht (Tabellen), Bedingungen (aufklappbare Abschnitte), PSBT-Zusammenfassung (Tabelle der Outputs). Fallback automatisch auf HTML, dann Klartext. |
+| Spoiler (`<tg-spoiler>`) | Treuhandadresse, Empfangsadressen in der PSBT-Übersicht, Zugangscode der Einladung – erst nach Antippen lesbar |
+| Kopier-Buttons (`copy_text`) | Adresse, Betrag (`0.01000000`), Einladungslink, Zugangscode, txid |
+| Code-Blöcke (`<pre>`) | Descriptor und PSBT (Antippen kopiert) |
+| Farbige Buttons (`style`) | grün = bestätigen/freigeben/senden, rot = abbrechen/Streitfall/„stimmt nicht“, blau = nächster Schritt |
+| Deaktivierte Buttons | Statusanzeige („⏳ Warte auf Einzahlung“, „✍️ Signaturen 1 von 2“) |
+| `force_reply` + Platzhalter | alle Eingabeschritte (Titel, Betrag, Schlüssel, Adresse, PSBT, Begründung) |
+| `protect_content` | Streitfall-Inhalte (Begründungen, Rückfragen, Entscheidungen) – nicht weiterleitbar |
+| Ephemeral Messages | in Gruppen: Hinweise und Privat-Link nur für den Absender sichtbar; Fallback auf normalen Hinweis |
+| `tg-time` | Ablauf der Einladung, Gültigkeit der PSBT-Session, Erstellt-/Beitrittszeit, Streitfall-Alter – in der Ortszeit des Lesers |
+| Links | Explorer (mempool.space) für Adresse und txid, Cryptgeon, Support, Deep-Link `start=t_<ID>` |
+
+Bewusst **nicht** genutzt: `protect_content` für PSBT/Einladungen (Datei muss in die Wallet, Link muss weitergegeben werden), Stars/Payments (nur BTC), Mini Apps (später möglich).

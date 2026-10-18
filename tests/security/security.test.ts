@@ -155,7 +155,7 @@ describe('permissions and roles', () => {
     await h.click(BUYER, `i:${id}:seller`);
     const msg = h.last(BUYER).text;
     const token = /start=i_([A-Za-z0-9_-]{43})/.exec(msg)![1]!;
-    const code = /Zugangscode: ([A-Z0-9]{8})/.exec(msg)![1]!;
+    const code = /Zugangscode[^:]*: ([A-Z0-9]{8})/.exec(msg)![1]!;
     await h.text(BUYER, `/start i_${token}`);
     await h.text(BUYER, code);
     expect(h.last(BUYER).text).toMatch(/nur eine Rolle/);
@@ -238,7 +238,7 @@ describe('invites and access codes', () => {
     await h.click(BUYER, `i:${id}:seller`);
     const msg = h.last(BUYER).text;
     const token = /start=i_([A-Za-z0-9_-]{43})/.exec(msg)![1]!;
-    const code = /Zugangscode: ([A-Z0-9]{8})/.exec(msg)![1]!;
+    const code = /Zugangscode[^:]*: ([A-Z0-9]{8})/.exec(msg)![1]!;
     await h.text(SELLER, `/start i_${token}`);
     for (let i = 0; i < 5; i++) await h.text(SELLER, 'WRONG123');
     expect(h.last(SELLER).text).toMatch(/gesperrt/);
@@ -253,7 +253,7 @@ describe('invites and access codes', () => {
     await h.click(BUYER, `i:${id}:seller`);
     const msg = h.last(BUYER).text;
     const token = /start=i_([A-Za-z0-9_-]{43})/.exec(msg)![1]!;
-    const code = /Zugangscode: ([A-Z0-9]{8})/.exec(msg)![1]!;
+    const code = /Zugangscode[^:]*: ([A-Z0-9]{8})/.exec(msg)![1]!;
     const dump = JSON.stringify(h.db.raw.prepare('SELECT * FROM invites').all());
     expect(dump).not.toContain(token);
     expect(dump).not.toContain(code);

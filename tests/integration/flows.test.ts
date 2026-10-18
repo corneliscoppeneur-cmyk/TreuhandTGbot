@@ -12,8 +12,7 @@ async function signAndUpload(h: Harness, userId: number, role: SignerRole, psbt:
 }
 
 function basePsbt(h: Harness, userId: number): string {
-  const m = [...h.to(userId)].reverse().find((x) => x.text.includes('PSBT:\n'))!;
-  return m.text.split('PSBT:\n')[1]!.trim();
+  return h.psbt(userId);
 }
 
 describe('full trade: creation → invite → agreement → multisig → funding → release', () => {

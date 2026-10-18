@@ -11,13 +11,35 @@ export interface ServiceCtx {
   now: () => number;
 }
 
-export type Button = { text: string; data: string } | { text: string; url: string };
+/** Telegram button colors: success = green, danger = red, primary = blue. */
+export type ButtonStyle = 'success' | 'danger' | 'primary';
+
+export type Button =
+  | { text: string; data: string; style?: ButtonStyle }
+  | { text: string; url: string; style?: ButtonStyle }
+  /** Copies text (1-256 chars) to the clipboard. */
+  | { text: string; copy: string; style?: ButtonStyle }
+  /** Non-clickable status indicator. */
+  | { text: string; disabled: true };
+
+/** Content of an outgoing message. Exactly one of text / html / rich should be the primary content. */
+export interface MessageContent {
+  /** Plain text (no markup). */
+  text: string;
+  /** HTML parse-mode markup; all dynamic values escaped with esc(). */
+  html?: string;
+  /** Rich-message HTML (tables, headings, details). Falls back to html/text if unsupported. */
+  rich?: string;
+  buttons?: Button[][];
+  /** Prevent forwarding and saving (dispute content, warnings). */
+  protect?: boolean;
+  /** Ask the client to open the reply field (dialog prompts). */
+  forceReply?: { placeholder?: string };
+}
 
 /** Outgoing message produced by a service. Private notices go to user ids; group notices are status-only. */
-export interface Notice {
+export interface Notice extends MessageContent {
   chatId: number;
-  text: string;
-  buttons?: Button[][];
   /** Send as a document (e.g. PSBT file) in addition to the text. */
   document?: { filename: string; content: string };
 }

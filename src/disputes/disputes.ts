@@ -1,6 +1,7 @@
 import { MAX_DISPUTE_REASON_CHARS } from '../config/constants.ts';
 import { auditStmt, getOpenDispute, getTrade, listParticipants, transition, type DisputeRow } from '../database/repo.ts';
-import type { Notice, ServiceCtx } from '../domain/context.ts';
+import type { MessageContent, Notice, ServiceCtx } from '../domain/context.ts';
+import { b, esc, link, quote, time, toPlain } from '../telegram/format.ts';
 import { UserError } from '../domain/context.ts';
 import { askRecipientAddress } from '../domain/payout.ts';
 import type { TradeState } from '../domain/state-machine.ts';
@@ -84,14 +85,16 @@ export async function openDispute(
     .map((p) => ({
       chatId: p.telegram_user_id,
       text: `⚠️ Handel #${tradeId}: Streitfall eröffnet. Botseitige Freigaben sind gestoppt.\n\n${DISPUTE_LIMITS_TEXT}`,
+      protect: true,
       buttons:
         p.telegram_user_id === s.arbiter
-          ? [[{ text: 'Fall übernehmen', data: `d:${tradeId}:take` }]]
+          ? [[{ text: '⚖️ Fall übernehmen', data: `d:${tradeId}:take`, style: 'primary' as const }]]
           : [[{ text: 'Support', url: ctx.cfg.supportUrl }]],
     }));
   notices.push({
     chatId: userId,
     text: `Streitfall für #${tradeId} eröffnet. Der Schlichter wurde benachrichtigt.\n\n${DISPUTE_LIMITS_TEXT}`,
+    protect: true,
     buttons: [[{ text: 'Support kontaktieren', url: ctx.cfg.supportUrl }]],
   });
   return [...notices, ...groupNotice(a.trade, 'STREITFALL')];
@@ -121,12 +124,8 @@ export async function takeCase(ctx: ServiceCtx, userId: number, tradeId: string)
   return [
     {
       chatId: userId,
-      text: disputeText(d) + '\n\nEntscheidung:',
-      buttons: [
-        [{ text: 'Release an Verkäufer', data: `d:${tradeId}:release` }],
-        [{ text: 'Refund an Käufer', data: `d:${tradeId}:refund` }],
-        [{ text: 'Rückfrage an Parteien', data: `d:${tradeId}:ask` }],
-      ],
+      ...disputeMessage(d),
+      buttons: decisionButtons(tradeId),
     },
     ...[s.buyer, s.seller]
       .filter((x): x is number => x !== undefined)
@@ -137,8 +136,23 @@ export async function takeCase(ctx: ServiceCtx, userId: number, tradeId: string)
   ];
 }
 
-export function disputeText(d: DisputeRow): string {
-  return `Streitfall #${d.id} (Handel #${d.trade_id})\nStatus: ${d.status}\nBegründung:\n${d.reason}${d.evidence_links ? `\n\nLinks:\n${d.evidence_links}` : ''}`;
+export function decisionButtons(tradeId: string) {
+  return [
+    [{ text: '✅ Release an Verkäufer', data: `d:${tradeId}:release`, style: 'success' as const }],
+    [{ text: '↩️ Refund an Käufer', data: `d:${tradeId}:refund`, style: 'primary' as const }],
+    [{ text: 'Rückfrage an Parteien', data: `d:${tradeId}:ask` }],
+  ];
+}
+
+/** Dispute details for the arbiter: reason in an expandable quote, evidence as links, protected from forwarding. */
+export function disputeMessage(d: DisputeRow): MessageContent {
+  const links = (d.evidence_links ?? '').split(/\s+/).filter(Boolean);
+  const markup =
+    `${b(`⚖️ Streitfall #${esc(d.id)} · Handel #${esc(d.trade_id)}`)}\n` +
+    `Status: ${esc(d.status)} · eröffnet ${time(d.opened_at, 'r')}\n\n` +
+    `${b('Begründung:')}\n${quote(esc(d.reason), true)}` +
+    (links.length ? `\n${b('Links:')}\n${links.map((l, n) => `• ${link(l, `Beweis ${n + 1}`)}`).join('\n')}` : '');
+  return { text: toPlain(markup), html: markup, protect: true };
 }
 
 export async function addDisputeNote(ctx: ServiceCtx, userId: number, tradeId: string, noteRaw: string): Promise<Notice[]> {
@@ -158,7 +172,9 @@ export async function addDisputeNote(ctx: ServiceCtx, userId: number, tradeId: s
     .map((chatId) => ({
       chatId,
       text: `Handel #${tradeId} – ${label}:\n${note}`,
-      buttons: [[{ text: 'Antworten', data: `d:${tradeId}:ask` }]],
+      html: `${b(`Handel #${esc(tradeId)} – ${esc(label)}:`)}\n${quote(esc(note))}`,
+      protect: true,
+      buttons: [[{ text: 'Antworten', data: `d:${tradeId}:ask`, style: 'primary' as const }]],
     }));
 }
 
@@ -207,6 +223,7 @@ export async function decideDispute(
     .map((chatId) => ({
       chatId,
       text: `Handel #${tradeId}: Schlichterentscheidung: ${decision === 'release' ? 'Auszahlung an Verkäufer' : 'Rückerstattung an Käufer'}.\nBegründung: ${note}\n\nDie Auszahlung erfordert die Signatur des Schlichters und des Empfängers.`,
+      protect: true,
     }));
   return [...info, ...(await askRecipientAddress(ctx, trade, decision))];
 }

@@ -5,7 +5,8 @@ import { buildMultisig, type DerivedSigner, type RoleKey } from '../bitcoin/mult
 import type { EscrowScript } from '../bitcoin/psbt.ts';
 import { auditStmt, getMultisig, getTrade, listParticipants, transition, type MultisigRow } from '../database/repo.ts';
 import { looksLikeMnemonic, looksLikePrivateKey } from '../security/redaction.ts';
-import type { Notice, ServiceCtx } from './context.ts';
+import type { MessageContent, Notice, ServiceCtx } from './context.ts';
+import { b, btcForWallet, code, esc, explorerAddressUrl, i, pre, quote, spoiler, toPlain } from '../telegram/format.ts';
 import { UserError } from './context.ts';
 import { formatBtc } from './amount.ts';
 import { authorize, isSigningRole, signerIds } from './trade.ts';
@@ -30,15 +31,48 @@ export function escrowFromRow(m: MultisigRow): EscrowScript {
   return { scriptPubKey: hex.decode(m.script_pubkey_hex), witnessScript: hex.decode(m.witness_script_hex), signers };
 }
 
-export function verificationText(m: MultisigRow, tradeId: string): string {
-  return (
-    `Handel #${tradeId} – Multisig-Konfiguration (2-von-3, P2WSH)\n\n` +
-    `Descriptor:\n${m.descriptor}\n\n` +
-    `Erwartete Einzahlungsadresse (Index 0):\n${m.address}\n\n` +
-    'So prüfst du unabhängig: In Sparrow „Datei → Neue Wallet → Descriptor einfügen“ (oder Bitcoin Core: ' +
-    '`deriveaddresses "<descriptor>" "[0,0]"`). Die erste Empfangsadresse muss exakt übereinstimmen und ' +
-    'dein eigener Schlüssel muss enthalten sein. Erst dann bestätigen.'
-  );
+/** Multisig configuration for independent verification, with copy button and confirm/deny buttons. */
+export function verificationMessage(m: MultisigRow, tradeId: string): MessageContent {
+  const markup =
+    `${b(`🔐 Handel #${esc(tradeId)} – Multisig-Konfiguration`)} (2-von-3, P2WSH)\n\n` +
+    `${b('Descriptor')} (tippen zum Kopieren):\n${pre(m.descriptor)}\n` +
+    `${b('Erwartete Einzahlungsadresse')} (Index 0):\n${code(m.address)}\n\n` +
+    quote(
+      'So prüfst du unabhängig: In Sparrow „Datei → Neue Wallet → Descriptor einfügen“ (oder Bitcoin Core: ' +
+        `${code('deriveaddresses "<descriptor>" "[0,0]"')}). Die erste Empfangsadresse muss exakt übereinstimmen und ` +
+        'dein eigener Schlüssel muss enthalten sein. Erst dann bestätigen.',
+    );
+  return {
+    text: toPlain(markup),
+    html: markup,
+    buttons: [
+      [{ text: '📋 Adresse kopieren', copy: m.address }],
+      [{ text: '✅ Adresse stimmt überein', data: `t:${tradeId}:verify:${m.address.slice(-8)}`, style: 'success' }],
+      [{ text: '❌ Stimmt NICHT', data: `t:${tradeId}:verifyfail`, style: 'danger' }],
+    ],
+  };
+}
+
+/** Private deposit instructions for the buyer: address hidden behind a spoiler, copy buttons, explorer link. */
+export function depositMessage(tradeId: string, amountSats: bigint, address: string, netName: 'signet' | 'mainnet'): MessageContent {
+  const markup =
+    `${b(`💰 Handel #${esc(tradeId)}: Bereit zur Einzahlung`)}\n\n` +
+    `Betrag: ${b(`exakt ${esc(formatBtc(amountSats))} BTC`)} (${esc(netName)})\n` +
+    `Adresse (2-von-3-Multisig, antippen zum Anzeigen):\n${spoiler(esc(address))}\n\n` +
+    'Bitte genau diesen Betrag in EINER oder mehreren Zahlungen senden. Die Summe muss exakt stimmen; ' +
+    'Überzahlungen führen zu manueller Prüfung. Netzwerkgebühren der Einzahlung trägst du.\n\n' +
+    i('Hinweis: Blockchain-APIs können abgefragte Adressen beobachten. Bitcoin-Adressen sind nicht anonym.');
+  return {
+    text: toPlain(markup),
+    html: markup,
+    buttons: [
+      [
+        { text: '📋 Adresse kopieren', copy: address, style: 'primary' },
+        { text: '📋 Betrag kopieren', copy: btcForWallet(amountSats) },
+      ],
+      [{ text: '🔎 Im Explorer ansehen', url: explorerAddressUrl(netName, address) }],
+    ],
+  };
 }
 
 export async function registerKey(ctx: ServiceCtx, userId: number, tradeId: string, input: string): Promise<Notice[]> {
@@ -129,11 +163,7 @@ export async function registerKey(ctx: ServiceCtx, userId: number, tradeId: stri
     .filter((x): x is number => x !== undefined)
     .map((chatId) => ({
       chatId,
-      text: verificationText(m, tradeId),
-      buttons: [
-        [{ text: 'Adresse stimmt überein', data: `t:${tradeId}:verify:${m.address.slice(-8)}` }],
-        [{ text: 'Stimmt NICHT', data: `t:${tradeId}:verifyfail` }],
-      ],
+      ...verificationMessage(m, tradeId),
     }));
 }
 
@@ -174,16 +204,7 @@ export async function confirmAddress(ctx: ServiceCtx, userId: number, tradeId: s
   const out: Notice[] = signers
     .filter((p) => p.role !== 'buyer')
     .map((p) => ({ chatId: p.telegram_user_id, text: `Handel #${tradeId}: Konfiguration bestätigt. Warte auf Einzahlung des Käufers.` }));
-  out.push({
-    chatId: s.buyer!,
-    text:
-      `Handel #${tradeId}: Bereit zur Einzahlung.\n\n` +
-      `Betrag: exakt ${formatBtc(BigInt(trade.amount_sats))} BTC (${ctx.net.name})\n` +
-      `Adresse (2-von-3-Multisig):\n${m.address}\n\n` +
-      'Bitte genau diesen Betrag in EINER oder mehreren Zahlungen senden. Die Summe muss exakt stimmen; ' +
-      'Überzahlungen führen zu manueller Prüfung. Netzwerkgebühren der Einzahlung trägst du.\n' +
-      'Hinweis: Blockchain-APIs können abgefragte Adressen beobachten. Bitcoin-Adressen sind nicht anonym.',
-  });
+  out.push({ chatId: s.buyer!, ...depositMessage(tradeId, BigInt(trade.amount_sats), m.address, ctx.net.name) });
   return out;
 }
 
@@ -197,5 +218,6 @@ export async function reportAddressMismatch(ctx: ServiceCtx, userId: number, tra
     .map((p) => ({
       chatId: p.telegram_user_id,
       text: `⚠️ Handel #${a.trade.id}: Eine Partei meldet, dass die Multisig-Adresse NICHT übereinstimmt. Nicht einzahlen! Bitte Handel abbrechen und neu aufsetzen.`,
+      buttons: [[{ text: 'Handel abbrechen', data: `t:${a.trade.id}:cancel`, style: 'danger' as const }]],
     }));
 }

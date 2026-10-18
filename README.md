@@ -25,7 +25,7 @@ Lokaler Worker: `.dev.vars` anlegen (siehe `.env.example`), dann `npm run db:mig
 Deployment: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) · Testablauf: [`docs/SIGNET-RUNBOOK.md`](docs/SIGNET-RUNBOOK.md)
 
 ## Teststand
-85 automatisierte Tests (Unit, Integration über die echten Telegram-Handler, Security, Fehlerfälle), u. a. alle Signaturkombinationen, manipulierte PSBTs, Gegenprüfung mit bitcoinjs-lib. Smoke-Test in der echten workerd-Runtime. **Noch nicht durchgeführt:** echter Telegram-Betrieb, echte Signet-Transaktionen, Test mit GUI-Wallets ([`docs/WALLET-COMPATIBILITY.md`](docs/WALLET-COMPATIBILITY.md)).
+104 automatisierte Tests (Unit, Integration über die echten Telegram-Handler, Security, Fehlerfälle), u. a. alle Signaturkombinationen, manipulierte PSBTs, Gegenprüfung mit bitcoinjs-lib. Smoke-Test in der echten workerd-Runtime. **Noch nicht durchgeführt:** echter Telegram-Betrieb, echte Signet-Transaktionen, Test mit GUI-Wallets ([`docs/WALLET-COMPATIBILITY.md`](docs/WALLET-COMPATIBILITY.md)).
 
 ## Dokumentation
 [Architektur](docs/ARCHITECTURE.md) · [Entscheidungen](docs/DECISIONS.md) · [Abhängigkeiten](docs/DEPENDENCIES.md) · [Sicherheit](docs/SECURITY.md) · [Bedrohungsmodell](docs/THREAT-MODEL.md) · [Abläufe](docs/USER-FLOWS.md) · [Datenschutz](docs/PRIVACY.md) · [Kosten](docs/COSTS.md) · [Limits](docs/API-LIMITS.md) · [Incident Response](docs/INCIDENT-RESPONSE.md) · [Mainnet-Checkliste](docs/MAINNET-CHECKLIST.md) · [Rechtliches](docs/LEGAL-CHECKLIST.md)

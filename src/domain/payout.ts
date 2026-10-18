@@ -28,7 +28,8 @@ import {
 import { newSessionId } from '../security/tokens.ts';
 import { logError } from '../security/redaction.ts';
 import { formatBtc, formatSats } from './amount.ts';
-import type { Notice, ServiceCtx } from './context.ts';
+import type { MessageContent, Notice, ServiceCtx } from './context.ts';
+import { b, code, esc, explorerTxUrl, pre, spoiler, table, time, toPlain } from '../telegram/format.ts';
 import { UserError } from './context.ts';
 import { commissionSats, formatBps } from './fees.ts';
 import { escrowFromRow } from './keys.ts';
@@ -55,8 +56,8 @@ export async function markDelivered(ctx: ServiceCtx, userId: number, tradeId: st
       chatId: s.buyer!,
       text: `Handel #${tradeId}: Der Verkäufer meldet die Lieferung. Bitte prüfen. Wenn alles passt: Freigabe anfordern. Bei Problemen: Streitfall.`,
       buttons: [
-        [{ text: 'Freigabe an Verkäufer', data: `t:${tradeId}:release` }],
-        [{ text: 'Probleme mit Admin', data: `t:${tradeId}:dispute` }],
+        [{ text: '✅ Freigabe an Verkäufer', data: `t:${tradeId}:release`, style: 'success' as const }],
+        [{ text: 'Probleme mit Admin', data: `t:${tradeId}:dispute`, style: 'danger' as const }],
       ],
     },
     ...groupNotice(a.trade, 'LIEFERUNG GEMELDET'),
@@ -95,7 +96,7 @@ export async function askRecipientAddress(ctx: ServiceCtx, trade: TradeRow, kind
     {
       chatId: recipient,
       text: `Handel #${trade.id}: ${label} vorbereitet. Bitte sende hier privat deine ${ctx.net.name}-Empfangsadresse.`,
-      buttons: [[{ text: 'Empfangsadresse angeben', data: `t:${trade.id}:addr` }]],
+      buttons: [[{ text: '📥 Empfangsadresse angeben', data: `t:${trade.id}:addr`, style: 'primary' as const }]],
     },
     ...[s.buyer, s.seller, s.arbiter]
       .filter((id): id is number => id !== undefined && id !== recipient)
@@ -110,21 +111,30 @@ function payoutKindForStatus(status: string): PayoutKind | null {
   return null;
 }
 
-export function sessionSummary(trade: TradeRow, session: SessionRow, netName: string): string {
+/** PSBT session summary as rich message (table of outputs, spoilered addresses, txid, expiry). */
+export function sessionSummary(trade: TradeRow, session: SessionRow, netName: 'signet' | 'mainnet', expected?: string): MessageContent {
   const outs = JSON.parse(session.outputs_json) as { purpose: PayoutOutput['purpose']; address: string; valueSats: string }[];
   const utxos = JSON.parse(session.utxos_json) as { txid: string; vout: number; valueSats: string }[];
   const total = utxos.reduce((s, u) => s + BigInt(u.valueSats), 0n);
-  const lines = outs.map(
-    (o) => `• ${o.purpose === 'recipient' ? 'Empfänger' : 'Provision Betreiber'}: ${formatBtc(BigInt(o.valueSats))} BTC → ${o.address}`,
-  );
-  return (
-    `Handel #${trade.id} – ${session.kind === 'release' ? 'AUSZAHLUNG an Verkäufer' : 'RÜCKERSTATTUNG an Käufer'}\n` +
-    `Netzwerk: ${netName}\nSession: ${session.id}\ntxid: ${session.txid}\n\n` +
-    `Eingänge: ${utxos.length} UTXO, gesamt ${formatBtc(total)} BTC\nAusgänge:\n${lines.join('\n')}\n` +
-    `• Netzwerkgebühr: ${formatSats(BigInt(session.miner_fee_sats))} (${session.fee_rate} sat/vB)\n\n` +
-    'Prüfe in deiner Wallet, dass Beträge und Adressen EXAKT übereinstimmen, bevor du signierst. ' +
-    'Jede Änderung erfordert eine neue Session. Nur SIGHASH_ALL.'
-  );
+  const rows = [
+    ['Ausgang', 'Betrag', 'Adresse'],
+    ...outs.map((o) => [
+      o.purpose === 'recipient' ? 'Empfänger' : 'Provision Betreiber',
+      `${b(esc(formatBtc(BigInt(o.valueSats))))} BTC`,
+      spoiler(esc(o.address)),
+    ]),
+    ['Netzwerkgebühr', `${esc(formatSats(BigInt(session.miner_fee_sats)))} (${esc(session.fee_rate)} sat/vB)`, '–'],
+  ];
+  const markup =
+    `<h3>${session.kind === 'release' ? '✅ AUSZAHLUNG an Verkäufer' : '↩️ RÜCKERSTATTUNG an Käufer'} · #${esc(trade.id)}</h3>` +
+    `<p>Netzwerk: ${esc(netName)} · Session ${code(session.id)} · gültig bis ${time(session.expires_at, 'dt')}</p>` +
+    `<p>Eingänge: ${utxos.length} UTXO, gesamt ${b(esc(formatBtc(total)))} BTC</p>` +
+    table(rows) +
+    `<p>txid: ${code(session.txid)}</p>` +
+    (expected ? `<p>Erwartete Signaturen: ${b(esc(expected))} (2 von 3)</p>` : '') +
+    `<blockquote>Prüfe in deiner Wallet, dass Beträge und Adressen EXAKT übereinstimmen, bevor du signierst. ` +
+    'Jede Änderung erfordert eine neue Session. Nur SIGHASH_ALL.</blockquote>';
+  return { text: toPlain(markup), rich: markup };
 }
 
 /** Recipient submits payout address → PSBT session is built (RELEASE/REFUND_REQUESTED → SIGNING). */
@@ -226,16 +236,26 @@ async function psbtNotices(ctx: ServiceCtx, trade: TradeRow, session: SessionRow
       .bind(trade.id)
       .first<{ decision: string }>()) !== null;
   const expected = disputed ? `${ROLE_LABEL_DE[RECIPIENT_ROLE[session.kind]]} + Schlichter` : 'Käufer + Verkäufer';
-  const summary = sessionSummary(trade, session, ctx.net.name) + `\n\nErwartete Signaturen: ${expected} (2 von 3).`;
-  const inline = session.base_psbt.length + summary.length < TELEGRAM_MAX_MESSAGE_CHARS - 50;
+  const summary = sessionSummary(trade, session, ctx.net.name, expected);
+  const inline = session.base_psbt.length < TELEGRAM_MAX_MESSAGE_CHARS - 300;
+  const buttons = [
+    [{ text: '✍️ Signierte PSBT hochladen', data: `s:${session.id}:up`, style: 'primary' as const }],
+    [{ text: '📋 txid kopieren', copy: session.txid }],
+  ];
   return [s.buyer, s.seller, s.arbiter]
     .filter((x): x is number => x !== undefined)
-    .map((chatId) => ({
-      chatId,
-      text: inline ? `${summary}\n\nPSBT:\n${session.base_psbt}` : summary,
-      document: { filename: `trade-${trade.id}-${session.id}.psbt`, content: session.base_psbt },
-      buttons: [[{ text: 'Signierte PSBT hochladen', data: `s:${session.id}:up` }]],
-    }));
+    .flatMap((chatId) => [
+      { chatId, ...summary },
+      {
+        chatId,
+        // PSBT as tap-to-copy code block (if short) plus as .psbt file for the wallet
+        ...(inline
+          ? { text: `PSBT:\n${session.base_psbt}`, html: `${b('PSBT')} (tippen zum Kopieren):\n${pre(session.base_psbt)}` }
+          : { text: 'PSBT-Datei:' }),
+        document: { filename: `trade-${trade.id}-${session.id}.psbt`, content: session.base_psbt },
+        buttons,
+      },
+    ]);
 }
 
 /** Imports a signed PSBT: full re-validation, store signatures, finalize when 2 of 3 are present. */
@@ -315,7 +335,9 @@ export async function submitSignedPsbt(ctx: ServiceCtx, userId: number, sessionI
     text:
       `Handel #${session.trade_id}: Signatur von ${who} geprüft. 2 von 3 gültigen Signaturen liegen vor (txid ${session.txid}).` +
       (ctx.cfg.automaticBroadcast ? ' Die Transaktion wird automatisch gesendet.' : ' Eine berechtigte Partei kann sie jetzt senden.'),
-    ...(ctx.cfg.automaticBroadcast ? {} : { buttons: [[{ text: 'Transaktion senden', data: `s:${session.id}:bc` }]] }),
+    ...(ctx.cfg.automaticBroadcast
+      ? {}
+      : { buttons: [[{ text: '🚀 Transaktion senden', data: `s:${session.id}:bc`, style: 'success' as const }]] }),
   }));
 }
 
@@ -424,7 +446,7 @@ export async function broadcastSession(ctx: ServiceCtx, actorId: number, session
       .filter((p) => isSigningRole(p.role))
       .map((p) => ({
         chatId: p.telegram_user_id,
-        text: `Handel #${trade.id}: Transaktion gesendet. txid ${txid}. Warte auf Bestätigungen.`,
+        ...sentMessage(trade.id, txid, ctx.net.name),
       })),
     ...groupNotice(trade, 'GESENDET'),
   ];
@@ -438,3 +460,17 @@ export function decodeUploadedPsbt(text: string): Uint8Array {
 }
 
 export { formatBps };
+
+export function sentMessage(tradeId: string, txid: string, netName: 'signet' | 'mainnet'): MessageContent {
+  const markup = `${b(`🚀 Handel #${esc(tradeId)}: Transaktion gesendet`)}\ntxid: ${code(txid)}\nWarte auf Bestätigungen.`;
+  return {
+    text: toPlain(markup),
+    html: markup,
+    buttons: [
+      [
+        { text: '🔎 Im Explorer ansehen', url: explorerTxUrl(netName, txid) },
+        { text: '📋 txid kopieren', copy: txid },
+      ],
+    ],
+  };
+}
