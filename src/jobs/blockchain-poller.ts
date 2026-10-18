@@ -54,7 +54,10 @@ export async function runPoller(ctx: ServiceCtx): Promise<PollResult> {
   ).results;
 
   const result: PollResult = { polled: 0, errors: 0, notices: [] };
-  if (due.length === 0) return result;
+  if (due.length === 0) {
+    await recordHealth(ctx, 'poller_last_run', String(now));
+    return result;
+  }
   let tip: number;
   try {
     tip = await ctx.chain.getTipHeight();
