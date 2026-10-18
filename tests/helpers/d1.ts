@@ -46,7 +46,9 @@ export class TestDb implements Db {
   constructor() {
     this.raw = new DatabaseSync(':memory:');
     const dir = join(import.meta.dirname, '../../migrations');
-    for (const f of readdirSync(dir).filter((n) => n.endsWith('.sql')).sort()) {
+    for (const f of readdirSync(dir)
+      .filter((n) => n.endsWith('.sql'))
+      .sort()) {
       this.raw.exec(readFileSync(join(dir, f), 'utf8'));
     }
   }

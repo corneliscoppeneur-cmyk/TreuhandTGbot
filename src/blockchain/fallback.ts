@@ -33,7 +33,12 @@ export class CrossCheckedProvider implements BlockchainProvider {
     if (!this.secondary) return a;
     const b = await this.secondary.getAddressUtxos(address);
     // Compare confirmed sets strictly; mempool views may legitimately differ for a short time.
-    const conf = (l: ChainUtxo[]) => l.filter((u) => u.confirmed).map(utxoKey).sort().join('|');
+    const conf = (l: ChainUtxo[]) =>
+      l
+        .filter((u) => u.confirmed)
+        .map(utxoKey)
+        .sort()
+        .join('|');
     if (conf(a) !== conf(b)) throw new ProviderError('disagreement', 'providers disagree on confirmed UTXOs');
     return a;
   }

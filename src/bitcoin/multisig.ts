@@ -10,6 +10,8 @@ export const SIGNER_ROLES: readonly SignerRole[] = ['buyer', 'seller', 'arbiter'
 
 export interface RoleKey extends SignerKey {
   role: SignerRole;
+  /** Pre-derived <xpub>/0/0 key (derived by deriveChildPubkey at registration) to spread CPU cost. */
+  escrowPubkey?: Uint8Array;
 }
 
 export interface DerivedSigner {
@@ -53,12 +55,15 @@ export function buildMultisig(keys: RoleKey[], net: NetworkParams): MultisigConf
     role: k.role,
     fingerprint: k.fingerprint,
     fullPath: [...k.path, ESCROW_CHAIN, ESCROW_INDEX],
-    pubkey: deriveChildPubkey(k, net, ESCROW_INDEX),
+    pubkey: k.escrowPubkey ?? deriveChildPubkey(k, net, ESCROW_INDEX),
   }));
   if (new Set(signers.map((s) => hex.encode(s.pubkey))).size !== 3) throw new KeyError('Abgeleitete Schlüssel kollidieren');
   signers.sort((a, b) => cmp(a.pubkey, b.pubkey));
 
-  const ms = p2ms(MULTISIG_THRESHOLD, signers.map((s) => s.pubkey));
+  const ms = p2ms(
+    MULTISIG_THRESHOLD,
+    signers.map((s) => s.pubkey),
+  );
   const pay = p2wsh(ms, net.btc);
   if (!pay.address || !pay.witnessScript) throw new KeyError('Multisig-Erstellung fehlgeschlagen');
 

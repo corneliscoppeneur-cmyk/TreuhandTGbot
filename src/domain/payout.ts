@@ -41,14 +41,23 @@ export async function markDelivered(ctx: ServiceCtx, userId: number, tradeId: st
   const a = await authorize(ctx, userId, tradeId, 'mark_delivered');
   if (a.trade.status !== 'FUNDED') throw new UserError('Lieferung kann nur nach bestätigter Finanzierung gemeldet werden.');
   await transition(ctx.db, {
-    tradeId, from: 'FUNDED', to: 'FULFILLMENT', expectedVersion: a.trade.version, actorId: userId, action: 'delivered', now: ctx.now(),
+    tradeId,
+    from: 'FUNDED',
+    to: 'FULFILLMENT',
+    expectedVersion: a.trade.version,
+    actorId: userId,
+    action: 'delivered',
+    now: ctx.now(),
   });
   const s = signerIds(await listParticipants(ctx.db, tradeId));
   return [
     {
       chatId: s.buyer!,
       text: `Handel #${tradeId}: Der Verkäufer meldet die Lieferung. Bitte prüfen. Wenn alles passt: Freigabe anfordern. Bei Problemen: Streitfall.`,
-      buttons: [[{ text: 'Freigabe an Verkäufer', data: `t:${tradeId}:release` }], [{ text: 'Probleme mit Admin', data: `t:${tradeId}:dispute` }]],
+      buttons: [
+        [{ text: 'Freigabe an Verkäufer', data: `t:${tradeId}:release` }],
+        [{ text: 'Probleme mit Admin', data: `t:${tradeId}:dispute` }],
+      ],
     },
     ...groupNotice(a.trade, 'LIEFERUNG GEMELDET'),
   ];
@@ -59,7 +68,13 @@ async function requestPayout(ctx: ServiceCtx, userId: number, tradeId: string, k
   if (a.trade.status !== 'FUNDED' && a.trade.status !== 'FULFILLMENT') throw new UserError('Jetzt nicht möglich.');
   const to = kind === 'release' ? 'RELEASE_REQUESTED' : 'REFUND_REQUESTED';
   await transition(ctx.db, {
-    tradeId, from: a.trade.status, to, expectedVersion: a.trade.version, actorId: userId, action: `${kind}_requested`, now: ctx.now(),
+    tradeId,
+    from: a.trade.status,
+    to,
+    expectedVersion: a.trade.version,
+    actorId: userId,
+    action: `${kind}_requested`,
+    now: ctx.now(),
   });
   return askRecipientAddress(ctx, a.trade, kind);
 }
@@ -165,7 +180,14 @@ export async function submitPayoutAddress(ctx: ServiceCtx, userId: number, trade
   const id = newSessionId();
   const ser = (v: bigint) => v.toString();
   await transition(ctx.db, {
-    tradeId, from: a.trade.status, to: 'SIGNING', expectedVersion: a.trade.version, actorId: userId, action: 'psbt_created', detail: id, now,
+    tradeId,
+    from: a.trade.status,
+    to: 'SIGNING',
+    expectedVersion: a.trade.version,
+    actorId: userId,
+    action: 'psbt_created',
+    detail: id,
+    now,
     followUps: (g, gp) => [
       ctx.db
         .prepare(
@@ -174,10 +196,21 @@ export async function submitPayoutAddress(ctx: ServiceCtx, userId: number, trade
            SELECT ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${g}`,
         )
         .bind(
-          id, tradeId, kind, built.psbtBase64, built.unsignedTxHex, built.txid,
+          id,
+          tradeId,
+          kind,
+          built.psbtBase64,
+          built.unsignedTxHex,
+          built.txid,
           JSON.stringify(utxos.map((u) => ({ txid: u.txid, vout: u.vout, valueSats: ser(u.valueSats) }))),
           JSON.stringify(plan.outputs.map((o) => ({ purpose: o.purpose, address: o.address, valueSats: ser(o.valueSats) }))),
-          Number(plan.minerFeeSats), plan.feeRateSatVb, userId, now, now + PSBT_SESSION_TTL_SECONDS, now, ...gp,
+          Number(plan.minerFeeSats),
+          plan.feeRateSatVb,
+          userId,
+          now,
+          now + PSBT_SESSION_TTL_SECONDS,
+          now,
+          ...gp,
         ),
     ],
   });
@@ -187,10 +220,12 @@ export async function submitPayoutAddress(ctx: ServiceCtx, userId: number, trade
 
 async function psbtNotices(ctx: ServiceCtx, trade: TradeRow, session: SessionRow): Promise<Notice[]> {
   const s = signerIds(await listParticipants(ctx.db, trade.id));
-  const disputed = (await ctx.db.prepare(`SELECT decision FROM disputes WHERE trade_id = ? AND status = 'resolved' ORDER BY id DESC LIMIT 1`).bind(trade.id).first<{ decision: string }>()) !== null;
-  const expected = disputed
-    ? `${ROLE_LABEL_DE[RECIPIENT_ROLE[session.kind]]} + Schlichter`
-    : 'Käufer + Verkäufer';
+  const disputed =
+    (await ctx.db
+      .prepare(`SELECT decision FROM disputes WHERE trade_id = ? AND status = 'resolved' ORDER BY id DESC LIMIT 1`)
+      .bind(trade.id)
+      .first<{ decision: string }>()) !== null;
+  const expected = disputed ? `${ROLE_LABEL_DE[RECIPIENT_ROLE[session.kind]]} + Schlichter` : 'Käufer + Verkäufer';
   const summary = sessionSummary(trade, session, ctx.net.name) + `\n\nErwartete Signaturen: ${expected} (2 von 3).`;
   const inline = session.base_psbt.length + summary.length < TELEGRAM_MAX_MESSAGE_CHARS - 50;
   return [s.buyer, s.seller, s.arbiter]
@@ -217,7 +252,9 @@ export async function submitSignedPsbt(ctx: ServiceCtx, userId: number, sessionI
   const ms = (await getMultisig(ctx.db, session.trade_id))!;
   const escrow = escrowFromRow(ms);
   const utxos = (JSON.parse(session.utxos_json) as { txid: string; vout: number; valueSats: string }[]).map((u) => ({
-    txid: u.txid, vout: u.vout, valueSats: BigInt(u.valueSats),
+    txid: u.txid,
+    vout: u.vout,
+    valueSats: BigInt(u.valueSats),
   }));
   const ref = { unsignedTxHex: session.unsigned_tx_hex, utxos };
 
@@ -225,7 +262,13 @@ export async function submitSignedPsbt(ctx: ServiceCtx, userId: number, sessionI
   try {
     verified = verifyPsbtSignatures(psbt, escrow, ref);
   } catch (e) {
-    await auditStmt(ctx.db, { tradeId: session.trade_id, actorId: userId, action: 'psbt_rejected', detail: e instanceof PsbtError ? e.message : 'invalid', now: ctx.now() }).run();
+    await auditStmt(ctx.db, {
+      tradeId: session.trade_id,
+      actorId: userId,
+      action: 'psbt_rejected',
+      detail: e instanceof PsbtError ? e.message : 'invalid',
+      now: ctx.now(),
+    }).run();
     throw new UserError(e instanceof PsbtError ? `PSBT abgelehnt: ${e.message}` : 'PSBT abgelehnt');
   }
   if (verified.perInput.every((m) => m.size === 0)) throw new UserError('PSBT enthält keine Signatur.');
@@ -239,39 +282,80 @@ export async function submitSignedPsbt(ctx: ServiceCtx, userId: number, sessionI
         .bind(session.id, sg.role, userId, JSON.stringify(verified.perInput.map((m) => hex.encode(m.get(hex.encode(sg.pubkey))!))), now),
     );
   if (stmts.length === 0) throw new UserError('Signaturen unvollständig (nicht alle Inputs signiert).');
-  await ctx.db.batch([...stmts, auditStmt(ctx.db, { tradeId: session.trade_id, actorId: userId, action: 'psbt_signature_imported', detail: [...verified.roles].join(','), now })]);
+  await ctx.db.batch([
+    ...stmts,
+    auditStmt(ctx.db, {
+      tradeId: session.trade_id,
+      actorId: userId,
+      action: 'psbt_signature_imported',
+      detail: [...verified.roles].join(','),
+      now,
+    }),
+  ]);
 
-  // merge every stored signature (re-validated on import) and try to finalize
-  const stored = (await ctx.db.prepare('SELECT role, sigs_json FROM psbt_signatures WHERE session_id = ?').bind(session.id).all<{ role: string; sigs_json: string }>()).results;
+  const stored = await ctx.db
+    .prepare('SELECT COUNT(*) AS n FROM psbt_signatures WHERE session_id = ?')
+    .bind(session.id)
+    .first<{ n: number }>();
+  const parts = await listParticipants(ctx.db, session.trade_id);
+  const signerChats = parts.filter((p) => isSigningRole(p.role)).map((p) => p.telegram_user_id);
+  const who = [...verified.roles].map((r) => ROLE_LABEL_DE[r]).join(', ');
+  if ((stored?.n ?? 0) < 2) {
+    return signerChats.map((chatId) => ({
+      chatId,
+      text: `Handel #${session.trade_id}: Signatur von ${who} geprüft und gespeichert. Es fehlt noch eine zweite Signatur.`,
+    }));
+  }
+  // Finalization runs in a separate request (send button / cron) to keep each Worker invocation's CPU time low.
+  if (ctx.cfg.automaticBroadcast) {
+    await ctx.db.prepare('UPDATE scheduled_jobs SET next_poll_at = ? WHERE trade_id = ?').bind(now, session.trade_id).run();
+  }
+  return signerChats.map((chatId) => ({
+    chatId,
+    text:
+      `Handel #${session.trade_id}: Signatur von ${who} geprüft. 2 von 3 gültigen Signaturen liegen vor (txid ${session.txid}).` +
+      (ctx.cfg.automaticBroadcast ? ' Die Transaktion wird automatisch gesendet.' : ' Eine berechtigte Partei kann sie jetzt senden.'),
+    ...(ctx.cfg.automaticBroadcast ? {} : { buttons: [[{ text: 'Transaktion senden', data: `s:${session.id}:bc` }]] }),
+  }));
+}
+
+/** Combines the stored (already validated) signatures, finalizes and stores the raw transaction. */
+export async function finalizeSession(ctx: ServiceCtx, session: SessionRow): Promise<SessionRow> {
+  if (session.status === 'finalized') return session;
+  if (session.status !== 'open') throw new UserError('Session ist nicht offen.');
+  const ms = (await getMultisig(ctx.db, session.trade_id))!;
+  const escrow = escrowFromRow(ms);
+  const utxos = (JSON.parse(session.utxos_json) as { txid: string; vout: number; valueSats: string }[]).map((u) => ({
+    txid: u.txid,
+    vout: u.vout,
+    valueSats: BigInt(u.valueSats),
+  }));
+  const stored = (
+    await ctx.db
+      .prepare('SELECT role, sigs_json FROM psbt_signatures WHERE session_id = ?')
+      .bind(session.id)
+      .all<{ role: string; sigs_json: string }>()
+  ).results;
+  if (stored.length < 2) throw new UserError('Es fehlen Signaturen (2 von 3 erforderlich).');
   let merged: Map<string, Uint8Array>[] = utxos.map(() => new Map());
   for (const row of stored) {
     const signer = escrow.signers.find((sg) => sg.role === row.role)!;
     const sigs = JSON.parse(row.sigs_json) as string[];
-    merged = mergeSignatures(merged, sigs.map((sig) => new Map([[hex.encode(signer.pubkey), hex.decode(sig)]])));
+    merged = mergeSignatures(
+      merged,
+      sigs.map((sig) => new Map([[hex.encode(signer.pubkey), hex.decode(sig)]])),
+    );
   }
-  const parts = await listParticipants(ctx.db, session.trade_id);
-  const signerChats = parts.filter((p) => isSigningRole(p.role)).map((p) => p.telegram_user_id);
-  if (stored.length < 2) {
-    return signerChats.map((chatId) => ({
-      chatId,
-      text: `Handel #${session.trade_id}: Signatur von ${[...verified.roles].map((r) => ROLE_LABEL_DE[r]).join(', ')} geprüft und gespeichert. Es fehlt noch eine zweite Signatur.`,
-    }));
-  }
-
-  const final = combineAndFinalize(session.base_psbt, merged, escrow, ref);
+  const final = combineAndFinalize(session.base_psbt, merged, escrow, { unsignedTxHex: session.unsigned_tx_hex, utxos });
   if (final.txid !== session.txid) throw new Error('txid mismatch after finalize');
+  const now = ctx.now();
   const fin = await ctx.db
     .prepare(`UPDATE psbt_sessions SET status = 'finalized', raw_tx_hex = ?, updated_at = ? WHERE id = ? AND status = 'open'`)
     .bind(final.rawTxHex, now, session.id)
     .run();
-  if (fin.meta.changes === 1) await auditStmt(ctx.db, { tradeId: session.trade_id, actorId: 0, action: 'psbt_finalized', detail: session.txid, now }).run();
-
-  if (ctx.cfg.automaticBroadcast) return broadcastSession(ctx, 0, session.id);
-  return signerChats.map((chatId) => ({
-    chatId,
-    text: `Handel #${session.trade_id}: 2 gültige Signaturen. Transaktion ist fertig (txid ${session.txid}). Eine berechtigte Partei kann sie jetzt senden.`,
-    buttons: [[{ text: 'Transaktion senden', data: `s:${session.id}:bc` }]],
-  }));
+  if (fin.meta.changes === 1)
+    await auditStmt(ctx.db, { tradeId: session.trade_id, actorId: 0, action: 'psbt_finalized', detail: session.txid, now }).run();
+  return (await getSession(ctx.db, session.id))!;
 }
 
 /** Broadcasts a finalized session. actorId 0 = system. Idempotent. */
@@ -283,23 +367,33 @@ export async function broadcastSession(ctx: ServiceCtx, actorId: number, session
     if (!isSigningRole(a.role)) throw new UserError('Keine Berechtigung.');
   }
   if (session.status === 'broadcast' || session.status === 'confirmed') return [];
-  if (session.status !== 'finalized' || !session.raw_tx_hex) throw new UserError('Transaktion ist nicht bereit.');
+  if (session.status === 'locked') throw new UserError('Session gesperrt (Streitfall). Kein Senden durch den Bot.');
   const trade = (await getTrade(ctx.db, session.trade_id))!;
   if (trade.status !== 'SIGNING') throw new UserError('Senden in diesem Status nicht erlaubt.');
   if (await getOpenDispute(ctx.db, trade.id)) throw new UserError('Offener Streitfall: kein Senden durch den Bot.');
+  const ready = await finalizeSession(ctx, session);
+  if (!ready.raw_tx_hex) throw new UserError('Transaktion ist nicht bereit.');
 
   const now = ctx.now();
   let txid: string;
   try {
-    txid = await ctx.chain.broadcast(session.raw_tx_hex);
+    txid = await ctx.chain.broadcast(ready.raw_tx_hex);
   } catch (e) {
     logError('broadcast', e);
     if (e instanceof ProviderError && e.kind === 'rejected') {
       await transition(ctx.db, {
-        tradeId: trade.id, from: 'SIGNING', to: 'NEEDS_REVIEW', expectedVersion: trade.version, actorId, action: 'broadcast_rejected', now,
+        tradeId: trade.id,
+        from: 'SIGNING',
+        to: 'NEEDS_REVIEW',
+        expectedVersion: trade.version,
+        actorId,
+        action: 'broadcast_rejected',
+        now,
         detail: e.message.slice(0, 200),
         set: { sql: 'review_reason = ?', params: ['Broadcast vom Netzwerk abgelehnt'] },
-        followUps: (g, gp) => [ctx.db.prepare(`UPDATE psbt_sessions SET status = 'failed', updated_at = ? WHERE id = ? AND ${g}`).bind(now, session.id, ...gp)],
+        followUps: (g, gp) => [
+          ctx.db.prepare(`UPDATE psbt_sessions SET status = 'failed', updated_at = ? WHERE id = ? AND ${g}`).bind(now, session.id, ...gp),
+        ],
       });
       return [];
     }
@@ -307,18 +401,31 @@ export async function broadcastSession(ctx: ServiceCtx, actorId: number, session
   }
   if (txid !== session.txid) throw new Error('broadcast txid mismatch');
   await transition(ctx.db, {
-    tradeId: trade.id, from: 'SIGNING', to: 'BROADCAST', expectedVersion: trade.version, actorId, action: 'broadcast', detail: txid, now,
+    tradeId: trade.id,
+    from: 'SIGNING',
+    to: 'BROADCAST',
+    expectedVersion: trade.version,
+    actorId,
+    action: 'broadcast',
+    detail: txid,
+    now,
     followUps: (g, gp) => [
-      ctx.db.prepare(`UPDATE psbt_sessions SET status = 'broadcast', broadcast_at = ?, updated_at = ? WHERE id = ? AND ${g}`).bind(now, now, session.id, ...gp),
-      ctx.db.prepare(`INSERT OR REPLACE INTO scheduled_jobs (trade_id, next_poll_at, failures) SELECT ?, ?, 0 WHERE ${g}`).bind(trade.id, now + 60, ...gp),
+      ctx.db
+        .prepare(`UPDATE psbt_sessions SET status = 'broadcast', broadcast_at = ?, updated_at = ? WHERE id = ? AND ${g}`)
+        .bind(now, now, session.id, ...gp),
+      ctx.db
+        .prepare(`INSERT OR REPLACE INTO scheduled_jobs (trade_id, next_poll_at, failures) SELECT ?, ?, 0 WHERE ${g}`)
+        .bind(trade.id, now + 60, ...gp),
     ],
   });
   const parts = await listParticipants(ctx.db, trade.id);
   return [
-    ...parts.filter((p) => isSigningRole(p.role)).map((p) => ({
-      chatId: p.telegram_user_id,
-      text: `Handel #${trade.id}: Transaktion gesendet. txid ${txid}. Warte auf Bestätigungen.`,
-    })),
+    ...parts
+      .filter((p) => isSigningRole(p.role))
+      .map((p) => ({
+        chatId: p.telegram_user_id,
+        text: `Handel #${trade.id}: Transaktion gesendet. txid ${txid}. Warte auf Bestätigungen.`,
+      })),
     ...groupNotice(trade, 'GESENDET'),
   ];
 }

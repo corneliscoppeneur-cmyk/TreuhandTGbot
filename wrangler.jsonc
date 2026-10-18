@@ -1,0 +1,48 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "btc-telegram-escrow",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+
+  // One Worker serves the Telegram webhook (fetch) and the blockchain poller (scheduled).
+  "triggers": { "crons": ["*/5 * * * *"] },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "escrow",
+      // Replace after `wrangler d1 create escrow` (see docs/DEPLOYMENT.md)
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+
+  // Non-secret configuration. Secrets (TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
+  // INVITE_HMAC_SECRET) are set with `wrangler secret put` and never committed.
+  "vars": {
+    "TELEGRAM_BOT_USERNAME": "YourEscrowBot",
+    "BITCOIN_NETWORK": "signet",
+    "ALLOW_MAINNET": "false",
+    "SUPPORT_BOT_URL": "https://t.me/GruppennetzwerkKontakt_bot",
+    "CRYPTGEON_URL": "https://cryptgeon.org",
+    "DEFAULT_COMMISSION_BPS": "100",
+    "REFUND_COMMISSION_BPS": "0",
+    // Operator's own, externally managed receive address (signet). Not an escrow key.
+    "COMMISSION_ADDRESS": "tb1qreplace-with-your-own-signet-address",
+    "MIN_CONFIRMATIONS_SIGNET": "1",
+    "MIN_CONFIRMATIONS_MAINNET": "3",
+    "BLOCKCHAIN_PROVIDER": "esplora",
+    "ESPLORA_PRIMARY_URL": "https://mempool.space/signet/api",
+    "ESPLORA_SECONDARY_URL": "https://blockstream.info/signet/api",
+    "MAX_FEE_RATE_SAT_VB": "50",
+    "MAX_FEE_PERCENT": "5",
+    "POLL_MAX_TRADES_PER_RUN": "4",
+    "ENABLE_AUTOMATIC_BROADCAST": "false",
+    "ENABLE_CUSTODIAL_FEATURES": "false",
+    "ADMIN_TELEGRAM_IDS": "",
+    "DATA_RETENTION_DAYS": "180",
+  },
+}

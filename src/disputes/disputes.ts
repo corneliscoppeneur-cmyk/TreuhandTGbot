@@ -7,7 +7,14 @@ import type { TradeState } from '../domain/state-machine.ts';
 import { authorize, cleanText, groupNotice, isSigningRole, signerIds } from '../domain/trade.ts';
 
 /** States from which a buyer/seller may open a dispute. */
-const DISPUTABLE: ReadonlySet<TradeState> = new Set(['FUNDING_SEEN', 'FUNDED', 'FULFILLMENT', 'RELEASE_REQUESTED', 'REFUND_REQUESTED', 'SIGNING']);
+const DISPUTABLE: ReadonlySet<TradeState> = new Set([
+  'FUNDING_SEEN',
+  'FUNDED',
+  'FULFILLMENT',
+  'RELEASE_REQUESTED',
+  'REFUND_REQUESTED',
+  'SIGNING',
+]);
 
 export const DISPUTE_LIMITS_TEXT =
   'Wichtig: Der Bot kann BTC on-chain NICHT einfrieren. Käufer und Verkäufer könnten weiterhin gemeinsam ' +
@@ -30,7 +37,13 @@ function validateLinks(raw: string | null): string | null {
   return links.join(' ');
 }
 
-export async function openDispute(ctx: ServiceCtx, userId: number, tradeId: string, reasonRaw: string, linksRaw: string | null): Promise<Notice[]> {
+export async function openDispute(
+  ctx: ServiceCtx,
+  userId: number,
+  tradeId: string,
+  reasonRaw: string,
+  linksRaw: string | null,
+): Promise<Notice[]> {
   const a = await authorize(ctx, userId, tradeId, 'open_dispute');
   if (!DISPUTABLE.has(a.trade.status)) throw new UserError('In diesem Status kann kein Streitfall eröffnet werden.');
   if (await getOpenDispute(ctx.db, tradeId)) throw new UserError('Es gibt bereits einen offenen Streitfall.');
@@ -39,14 +52,24 @@ export async function openDispute(ctx: ServiceCtx, userId: number, tradeId: stri
   const now = ctx.now();
   try {
     await transition(ctx.db, {
-      tradeId, from: a.trade.status, to: 'DISPUTED', expectedVersion: a.trade.version, actorId: userId, action: 'dispute_opened', now,
+      tradeId,
+      from: a.trade.status,
+      to: 'DISPUTED',
+      expectedVersion: a.trade.version,
+      actorId: userId,
+      action: 'dispute_opened',
+      now,
       followUps: (g, gp) => [
         ctx.db
-          .prepare(`INSERT INTO disputes (trade_id, opened_by, reason, evidence_links, status, opened_at) SELECT ?, ?, ?, ?, 'open', ? WHERE ${g}`)
+          .prepare(
+            `INSERT INTO disputes (trade_id, opened_by, reason, evidence_links, status, opened_at) SELECT ?, ?, ?, ?, 'open', ? WHERE ${g}`,
+          )
           .bind(tradeId, userId, reason, links, now, ...gp),
         // stop bot-side payout: lock any live signing session
         ctx.db
-          .prepare(`UPDATE psbt_sessions SET status = 'locked', updated_at = ? WHERE trade_id = ? AND status IN ('open','finalized') AND ${g}`)
+          .prepare(
+            `UPDATE psbt_sessions SET status = 'locked', updated_at = ? WHERE trade_id = ? AND status IN ('open','finalized') AND ${g}`,
+          )
           .bind(now, tradeId, ...gp),
       ],
     });
@@ -61,7 +84,10 @@ export async function openDispute(ctx: ServiceCtx, userId: number, tradeId: stri
     .map((p) => ({
       chatId: p.telegram_user_id,
       text: `⚠️ Handel #${tradeId}: Streitfall eröffnet. Botseitige Freigaben sind gestoppt.\n\n${DISPUTE_LIMITS_TEXT}`,
-      buttons: p.telegram_user_id === s.arbiter ? [[{ text: 'Fall übernehmen', data: `d:${tradeId}:take` }]] : [[{ text: 'Support', url: ctx.cfg.supportUrl }]],
+      buttons:
+        p.telegram_user_id === s.arbiter
+          ? [[{ text: 'Fall übernehmen', data: `d:${tradeId}:take` }]]
+          : [[{ text: 'Support', url: ctx.cfg.supportUrl }]],
     }));
   notices.push({
     chatId: userId,
@@ -77,10 +103,18 @@ export async function takeCase(ctx: ServiceCtx, userId: number, tradeId: string)
   const d = (await getOpenDispute(ctx.db, tradeId))!;
   const now = ctx.now();
   await transition(ctx.db, {
-    tradeId, from: 'DISPUTED', to: 'ARBITRATION', expectedVersion: a.trade.version, actorId: userId, action: 'arbitration_started', now,
+    tradeId,
+    from: 'DISPUTED',
+    to: 'ARBITRATION',
+    expectedVersion: a.trade.version,
+    actorId: userId,
+    action: 'arbitration_started',
+    now,
     followUps: (g, gp) => [
       ctx.db.prepare(`UPDATE disputes SET status = 'arbitration' WHERE id = ? AND ${g}`).bind(d.id, ...gp),
-      ctx.db.prepare(`INSERT INTO dispute_events (dispute_id, actor_id, kind, created_at) SELECT ?, ?, 'taken', ? WHERE ${g}`).bind(d.id, userId, now, ...gp),
+      ctx.db
+        .prepare(`INSERT INTO dispute_events (dispute_id, actor_id, kind, created_at) SELECT ?, ?, 'taken', ? WHERE ${g}`)
+        .bind(d.id, userId, now, ...gp),
     ],
   });
   const s = signerIds(await listParticipants(ctx.db, tradeId));
@@ -94,10 +128,12 @@ export async function takeCase(ctx: ServiceCtx, userId: number, tradeId: string)
         [{ text: 'Rückfrage an Parteien', data: `d:${tradeId}:ask` }],
       ],
     },
-    ...[s.buyer, s.seller].filter((x): x is number => x !== undefined).map((chatId) => ({
-      chatId,
-      text: `Handel #${tradeId}: Der Schlichter prüft den Streitfall.`,
-    })),
+    ...[s.buyer, s.seller]
+      .filter((x): x is number => x !== undefined)
+      .map((chatId) => ({
+        chatId,
+        text: `Handel #${tradeId}: Der Schlichter prüft den Streitfall.`,
+      })),
   ];
 }
 
@@ -126,7 +162,13 @@ export async function addDisputeNote(ctx: ServiceCtx, userId: number, tradeId: s
     }));
 }
 
-export async function decideDispute(ctx: ServiceCtx, userId: number, tradeId: string, decision: 'release' | 'refund', noteRaw: string): Promise<Notice[]> {
+export async function decideDispute(
+  ctx: ServiceCtx,
+  userId: number,
+  tradeId: string,
+  decision: 'release' | 'refund',
+  noteRaw: string,
+): Promise<Notice[]> {
   const a = await authorize(ctx, userId, tradeId, 'decide_dispute');
   if (a.trade.status !== 'ARBITRATION') throw new UserError('Fall ist nicht in Schlichtung.');
   const d = await getOpenDispute(ctx.db, tradeId);
@@ -135,22 +177,37 @@ export async function decideDispute(ctx: ServiceCtx, userId: number, tradeId: st
   const now = ctx.now();
   const to = decision === 'release' ? 'RELEASE_REQUESTED' : 'REFUND_REQUESTED';
   await transition(ctx.db, {
-    tradeId, from: 'ARBITRATION', to, expectedVersion: a.trade.version, actorId: userId, action: `dispute_decided_${decision}`, now, detail: note.slice(0, 200),
+    tradeId,
+    from: 'ARBITRATION',
+    to,
+    expectedVersion: a.trade.version,
+    actorId: userId,
+    action: `dispute_decided_${decision}`,
+    now,
+    detail: note.slice(0, 200),
     followUps: (g, gp) => [
       ctx.db
-        .prepare(`UPDATE disputes SET status = 'resolved', decision = ?, decision_note = ?, resolved_at = ?, resolved_by = ? WHERE id = ? AND ${g}`)
+        .prepare(
+          `UPDATE disputes SET status = 'resolved', decision = ?, decision_note = ?, resolved_at = ?, resolved_by = ? WHERE id = ? AND ${g}`,
+        )
         .bind(decision, note, now, userId, d.id, ...gp),
-      ctx.db.prepare(`INSERT INTO dispute_events (dispute_id, actor_id, kind, note, created_at) SELECT ?, ?, ?, ?, ? WHERE ${g}`).bind(d.id, userId, `decision_${decision}`, note, now, ...gp),
+      ctx.db
+        .prepare(`INSERT INTO dispute_events (dispute_id, actor_id, kind, note, created_at) SELECT ?, ?, ?, ?, ? WHERE ${g}`)
+        .bind(d.id, userId, `decision_${decision}`, note, now, ...gp),
       // the locked pre-dispute session can never be used by the bot again
-      ctx.db.prepare(`UPDATE psbt_sessions SET status = 'cancelled', updated_at = ? WHERE trade_id = ? AND status = 'locked' AND ${g}`).bind(now, tradeId, ...gp),
+      ctx.db
+        .prepare(`UPDATE psbt_sessions SET status = 'cancelled', updated_at = ? WHERE trade_id = ? AND status = 'locked' AND ${g}`)
+        .bind(now, tradeId, ...gp),
     ],
   });
   const trade = (await getTrade(ctx.db, tradeId))!;
   const s = signerIds(await listParticipants(ctx.db, tradeId));
-  const info: Notice[] = [s.buyer, s.seller].filter((x): x is number => x !== undefined).map((chatId) => ({
-    chatId,
-    text: `Handel #${tradeId}: Schlichterentscheidung: ${decision === 'release' ? 'Auszahlung an Verkäufer' : 'Rückerstattung an Käufer'}.\nBegründung: ${note}\n\nDie Auszahlung erfordert die Signatur des Schlichters und des Empfängers.`,
-  }));
+  const info: Notice[] = [s.buyer, s.seller]
+    .filter((x): x is number => x !== undefined)
+    .map((chatId) => ({
+      chatId,
+      text: `Handel #${tradeId}: Schlichterentscheidung: ${decision === 'release' ? 'Auszahlung an Verkäufer' : 'Rückerstattung an Käufer'}.\nBegründung: ${note}\n\nDie Auszahlung erfordert die Signatur des Schlichters und des Empfängers.`,
+    }));
   return [...info, ...(await askRecipientAddress(ctx, trade, decision))];
 }
 

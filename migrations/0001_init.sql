@@ -103,6 +103,8 @@ CREATE TABLE signers_public (
   fingerprint TEXT NOT NULL,
   derivation_path TEXT NOT NULL,
   xpub TEXT NOT NULL,
+  -- <xpub>/0/0, derived once at registration (public key, not secret)
+  escrow_pubkey_hex TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   UNIQUE (trade_id, role),
   -- an account xpub may be used for one trade only (no key reuse across escrows)

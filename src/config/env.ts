@@ -157,10 +157,7 @@ export function parseConfig(env: Record<string, unknown>): AppConfig {
     commissionBps: int(env, 'DEFAULT_COMMISSION_BPS', 0, 1000),
     refundCommissionBps: int(env, 'REFUND_COMMISSION_BPS', 0, 1000),
     commissionAddress,
-    minConfirmations:
-      network === 'signet'
-        ? int(env, 'MIN_CONFIRMATIONS_SIGNET', 1, 100)
-        : int(env, 'MIN_CONFIRMATIONS_MAINNET', 3, 100),
+    minConfirmations: network === 'signet' ? int(env, 'MIN_CONFIRMATIONS_SIGNET', 1, 100) : int(env, 'MIN_CONFIRMATIONS_MAINNET', 3, 100),
     esploraPrimaryUrl: httpsUrl(env, 'ESPLORA_PRIMARY_URL', req(env, 'ESPLORA_PRIMARY_URL')),
     esploraSecondaryUrl: secondary ? httpsUrl(env, 'ESPLORA_SECONDARY_URL', secondary) : null,
     maxFeeRateSatVb: int(env, 'MAX_FEE_RATE_SAT_VB', 1, 2000),

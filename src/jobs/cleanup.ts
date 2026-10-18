@@ -19,12 +19,20 @@ export async function runCleanup(ctx: ServiceCtx): Promise<void> {
       .prepare(`UPDATE trades SET description = '[gelöscht]', terms = '[gelöscht]' WHERE id IN (${terminal}) AND terms <> '[gelöscht]'`)
       .bind(retentionCutoff),
     ctx.db
-      .prepare(`UPDATE disputes SET reason = '[gelöscht]', decision_note = NULL, evidence_links = NULL WHERE trade_id IN (${terminal}) AND reason <> '[gelöscht]'`)
+      .prepare(
+        `UPDATE disputes SET reason = '[gelöscht]', decision_note = NULL, evidence_links = NULL WHERE trade_id IN (${terminal}) AND reason <> '[gelöscht]'`,
+      )
       .bind(retentionCutoff),
     ctx.db
-      .prepare(`UPDATE dispute_events SET note = NULL WHERE note IS NOT NULL AND dispute_id IN (SELECT id FROM disputes WHERE trade_id IN (${terminal}))`)
+      .prepare(
+        `UPDATE dispute_events SET note = NULL WHERE note IS NOT NULL AND dispute_id IN (SELECT id FROM disputes WHERE trade_id IN (${terminal}))`,
+      )
       .bind(retentionCutoff),
-    ctx.db.prepare(`UPDATE trade_agreements SET content_json = '{}' WHERE trade_id IN (${terminal}) AND content_json <> '{}'`).bind(retentionCutoff),
-    ctx.db.prepare(`UPDATE psbt_sessions SET base_psbt = '', raw_tx_hex = NULL WHERE trade_id IN (${terminal}) AND base_psbt <> ''`).bind(retentionCutoff),
+    ctx.db
+      .prepare(`UPDATE trade_agreements SET content_json = '{}' WHERE trade_id IN (${terminal}) AND content_json <> '{}'`)
+      .bind(retentionCutoff),
+    ctx.db
+      .prepare(`UPDATE psbt_sessions SET base_psbt = '', raw_tx_hex = NULL WHERE trade_id IN (${terminal}) AND base_psbt <> ''`)
+      .bind(retentionCutoff),
   ]);
 }

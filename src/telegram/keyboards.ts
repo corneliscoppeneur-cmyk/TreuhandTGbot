@@ -48,28 +48,46 @@ export function tradeButtons(
 ): Button[][] {
   const id = t.id;
   const rows: Button[][] = [
-    [{ text: 'Bedingungen', data: `t:${id}:terms` }, { text: 'Teilnehmer', data: `t:${id}:parts` }],
-    [{ text: 'Gebühren', data: `t:${id}:fees` }, { text: 'Zahlungsstatus', data: `t:${id}:pay` }],
+    [
+      { text: 'Bedingungen', data: `t:${id}:terms` },
+      { text: 'Teilnehmer', data: `t:${id}:parts` },
+    ],
+    [
+      { text: 'Gebühren', data: `t:${id}:fees` },
+      { text: 'Zahlungsstatus', data: `t:${id}:pay` },
+    ],
   ];
   const s = t.status;
-  if (can(role, 'invite') && s !== 'CANCELLED' && s !== 'COMPLETE' && s !== 'REFUNDED') rows.push([{ text: 'Einladungen', data: `t:${id}:inv` }]);
+  if (can(role, 'invite') && s !== 'CANCELLED' && s !== 'COMPLETE' && s !== 'REFUNDED')
+    rows.push([{ text: 'Einladungen', data: `t:${id}:inv` }]);
   if (s === 'AGREEMENT' && can(role, 'agree_terms') && me?.agreed_hash !== t.agreement_hash) {
     rows.push([{ text: 'Bedingungen akzeptieren', data: `t:${id}:terms` }]);
   }
   if (s === 'KEY_SETUP' && can(role, 'register_key')) rows.push([{ text: 'Schlüssel / Adresse prüfen', data: `t:${id}:key` }]);
   if (s === 'FUNDED' && can(role, 'mark_delivered')) rows.push([{ text: 'Lieferung erfolgt', data: `t:${id}:delivered` }]);
-  if ((s === 'FUNDED' || s === 'FULFILLMENT') && can(role, 'request_release')) rows.push([{ text: 'Freigabe an Verkäufer', data: `t:${id}:release` }]);
-  if ((s === 'FUNDED' || s === 'FULFILLMENT') && can(role, 'request_refund')) rows.push([{ text: 'Rückerstattung an Käufer zustimmen', data: `t:${id}:refund` }]);
+  if ((s === 'FUNDED' || s === 'FULFILLMENT') && can(role, 'request_release'))
+    rows.push([{ text: 'Freigabe an Verkäufer', data: `t:${id}:release` }]);
+  if ((s === 'FUNDED' || s === 'FULFILLMENT') && can(role, 'request_refund'))
+    rows.push([{ text: 'Rückerstattung an Käufer zustimmen', data: `t:${id}:refund` }]);
   if ((s === 'RELEASE_REQUESTED' && role === 'seller') || (s === 'REFUND_REQUESTED' && role === 'buyer')) {
     rows.push([{ text: 'Empfangsadresse angeben', data: `t:${id}:addr` }]);
   }
   if (s === 'SIGNING' && session && can(role, 'sign_psbt')) {
-    if (session.status === 'open') rows.push([{ text: 'Signierte PSBT hochladen', data: `s:${session.id}:up` }, { text: 'PSBT erneut anzeigen', data: `s:${session.id}:show` }]);
+    if (session.status === 'open')
+      rows.push([
+        { text: 'Signierte PSBT hochladen', data: `s:${session.id}:up` },
+        { text: 'PSBT erneut anzeigen', data: `s:${session.id}:show` },
+      ]);
     if (session.status === 'finalized') rows.push([{ text: 'Transaktion senden', data: `s:${session.id}:bc` }]);
   }
   if (['DISPUTED', 'ARBITRATION'].includes(s) && role === 'arbiter') rows.push([{ text: 'Streitfall bearbeiten', data: `d:${id}:take` }]);
-  if (['DISPUTED', 'ARBITRATION'].includes(s) && (role === 'buyer' || role === 'seller')) rows.push([{ text: 'Stellungnahme senden', data: `d:${id}:ask` }]);
-  if (can(role, 'cancel_trade') && ['INVITING', 'AGREEMENT', 'KEY_SETUP', 'READY_TO_FUND'].includes(s)) rows.push([{ text: 'Handel abbrechen', data: `t:${id}:cancel` }]);
-  rows.push([{ text: 'Probleme mit Admin', data: `t:${id}:dispute` }, { text: 'Support', url: cfg.supportUrl }]);
+  if (['DISPUTED', 'ARBITRATION'].includes(s) && (role === 'buyer' || role === 'seller'))
+    rows.push([{ text: 'Stellungnahme senden', data: `d:${id}:ask` }]);
+  if (can(role, 'cancel_trade') && ['INVITING', 'AGREEMENT', 'KEY_SETUP', 'READY_TO_FUND'].includes(s))
+    rows.push([{ text: 'Handel abbrechen', data: `t:${id}:cancel` }]);
+  rows.push([
+    { text: 'Probleme mit Admin', data: `t:${id}:dispute` },
+    { text: 'Support', url: cfg.supportUrl },
+  ]);
   return rows;
 }

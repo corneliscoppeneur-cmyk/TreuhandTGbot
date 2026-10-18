@@ -1,8 +1,4 @@
-import {
-  INVITE_MAX_ATTEMPTS,
-  INVITE_TTL_SECONDS,
-  USER_MAX_FAILED_ATTEMPTS_PER_HOUR,
-} from '../config/constants.ts';
+import { INVITE_MAX_ATTEMPTS, INVITE_TTL_SECONDS, USER_MAX_FAILED_ATTEMPTS_PER_HOUR } from '../config/constants.ts';
 import { auditStmt, listParticipants, type InviteRow } from '../database/repo.ts';
 import { hmacHex, isInviteTokenFormat, newAccessCode, newInviteToken, safeEqual } from '../security/tokens.ts';
 import type { Notice, ServiceCtx } from './context.ts';
@@ -47,8 +43,15 @@ export async function createInvite(ctx: ServiceCtx, userId: number, tradeId: str
         `INSERT INTO invites (trade_id, role, token_hash, code_hash, max_uses, expires_at, created_by, created_at)
          VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
       )
-      .bind(tradeId, role, hmacHex(ctx.cfg.inviteHmacSecret, 'invite', token), hmacHex(ctx.cfg.inviteHmacSecret, 'code', code),
-        expiresAt, userId, now),
+      .bind(
+        tradeId,
+        role,
+        hmacHex(ctx.cfg.inviteHmacSecret, 'invite', token),
+        hmacHex(ctx.cfg.inviteHmacSecret, 'code', code),
+        expiresAt,
+        userId,
+        now,
+      ),
     auditStmt(ctx.db, { tradeId, actorId: userId, action: 'invite_created', detail: role, now }),
   ]);
   return { link: `https://t.me/${ctx.cfg.botUsername}?start=i_${token}`, accessCode: code, role, expiresAt };
@@ -80,7 +83,11 @@ function assertUsable(inv: InviteRow | null, userId: number, now: number): Invit
 }
 
 /** Step 1 of redemption: validates the deep-link token and binds the invite to this Telegram account. */
-export async function startRedeem(ctx: ServiceCtx, userId: number, token: string): Promise<{ inviteId: number; tradeId: string; role: Role }> {
+export async function startRedeem(
+  ctx: ServiceCtx,
+  userId: number,
+  token: string,
+): Promise<{ inviteId: number; tradeId: string; role: Role }> {
   if ((await recentFailures(ctx, userId)) >= USER_MAX_FAILED_ATTEMPTS_PER_HOUR) {
     throw new UserError('Zu viele Fehlversuche. Bitte später erneut versuchen.');
   }
@@ -114,9 +121,13 @@ export async function submitAccessCode(ctx: ServiceCtx, userId: number, inviteId
   if (!ok) {
     await ctx.db.batch([
       ctx.db
-        .prepare(`UPDATE invites SET attempts = attempts + 1, status = CASE WHEN attempts + 1 >= ? THEN 'revoked' ELSE status END WHERE id = ?`)
+        .prepare(
+          `UPDATE invites SET attempts = attempts + 1, status = CASE WHEN attempts + 1 >= ? THEN 'revoked' ELSE status END WHERE id = ?`,
+        )
         .bind(INVITE_MAX_ATTEMPTS, inv.id),
-      ctx.db.prepare('INSERT INTO access_attempts (telegram_user_id, invite_id, success, created_at) VALUES (?, ?, 0, ?)').bind(userId, inv.id, now),
+      ctx.db
+        .prepare('INSERT INTO access_attempts (telegram_user_id, invite_id, success, created_at) VALUES (?, ?, 0, ?)')
+        .bind(userId, inv.id, now),
     ]);
     const left = INVITE_MAX_ATTEMPTS - inv.attempts - 1;
     throw new UserError(left > 0 ? `Zugangscode falsch. Verbleibende Versuche: ${left}` : 'Zugangscode falsch. Einladung wurde gesperrt.');
@@ -126,11 +137,13 @@ export async function submitAccessCode(ctx: ServiceCtx, userId: number, inviteId
     .prepare(`SELECT role FROM participants WHERE trade_id = ? AND telegram_user_id = ? AND status = 'active'`)
     .bind(inv.trade_id, userId)
     .first<{ role: Role }>();
-  if (existing) throw new UserError(`Du bist in diesem Handel bereits ${ROLE_LABEL_DE[existing.role]}. Eine Person darf nur eine Rolle haben.`);
+  if (existing)
+    throw new UserError(`Du bist in diesem Handel bereits ${ROLE_LABEL_DE[existing.role]}. Eine Person darf nur eine Rolle haben.`);
 
   const trade = await ctx.db.prepare('SELECT status FROM trades WHERE id = ?').bind(inv.trade_id).first<{ status: string }>();
   const signer = SIGNING_ROLES.has(inv.role);
-  if (!trade || !JOINABLE[signer ? 'signer' : 'other'].includes(trade.status)) throw new UserError('Beitritt in diesem Status nicht mehr möglich.');
+  if (!trade || !JOINABLE[signer ? 'signer' : 'other'].includes(trade.status))
+    throw new UserError('Beitritt in diesem Status nicht mehr möglich.');
 
   let res;
   try {
@@ -145,7 +158,9 @@ export async function submitAccessCode(ctx: ServiceCtx, userId: number, inviteId
       ctx.db
         .prepare('INSERT INTO participants (trade_id, telegram_user_id, role, joined_at) SELECT ?, ?, ?, ? WHERE changes() = 1')
         .bind(inv.trade_id, userId, inv.role, now),
-      ctx.db.prepare('INSERT INTO access_attempts (telegram_user_id, invite_id, success, created_at) VALUES (?, ?, 1, ?)').bind(userId, inv.id, now),
+      ctx.db
+        .prepare('INSERT INTO access_attempts (telegram_user_id, invite_id, success, created_at) VALUES (?, ?, 1, ?)')
+        .bind(userId, inv.id, now),
       auditStmt(ctx.db, { tradeId: inv.trade_id, actorId: userId, action: 'invite_redeemed', detail: inv.role, now }),
     ]);
   } catch {
@@ -157,7 +172,10 @@ export async function submitAccessCode(ctx: ServiceCtx, userId: number, inviteId
   const parts = await listParticipants(ctx.db, inv.trade_id);
   const notices: Notice[] = parts
     .filter((p) => p.telegram_user_id !== userId && SIGNING_ROLES.has(p.role))
-    .map((p) => ({ chatId: p.telegram_user_id, text: `Handel #${inv.trade_id}: Neuer Teilnehmer als ${ROLE_LABEL_DE[inv.role]} beigetreten.` }));
+    .map((p) => ({
+      chatId: p.telegram_user_id,
+      text: `Handel #${inv.trade_id}: Neuer Teilnehmer als ${ROLE_LABEL_DE[inv.role]} beigetreten.`,
+    }));
   notices.push({
     chatId: userId,
     text: `Beigetreten: Handel #${inv.trade_id} als ${ROLE_LABEL_DE[inv.role]}.`,

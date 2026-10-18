@@ -24,7 +24,7 @@ describe('parseSignerKey', () => {
     expect(k.xpub.startsWith('tpub')).toBe(true);
   });
 
-  it("accepts apostrophe hardened notation and /0/* suffix", () => {
+  it('accepts apostrophe hardened notation and /0/* suffix', () => {
     const w = testWallet('buyer');
     const expr = `[${w.fingerprint}/48'/1'/0'/2']${w.account.publicExtendedKey}/0/*`;
     expect(parseSignerKey(expr, NET).xpub).toBe(parseSignerKey(w.keyExpression, NET).xpub);

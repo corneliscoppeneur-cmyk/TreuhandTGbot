@@ -14,13 +14,20 @@ import {
 } from '../database/repo.ts';
 import { formatBtc } from '../domain/amount.ts';
 import type { Notice, ServiceCtx } from '../domain/context.ts';
+import { broadcastSession } from '../domain/payout.ts';
 import { STATE_LABEL_DE, type TradeState } from '../domain/state-machine.ts';
 import { groupNotice, isSigningRole, signerIds } from '../domain/trade.ts';
 import { logError, redact } from '../security/redaction.ts';
 
 const FUNDING_STATES: ReadonlySet<TradeState> = new Set(['READY_TO_FUND', 'FUNDING_SEEN']);
 const HOLDING_STATES: ReadonlySet<TradeState> = new Set([
-  'FUNDED', 'FULFILLMENT', 'RELEASE_REQUESTED', 'REFUND_REQUESTED', 'SIGNING', 'DISPUTED', 'ARBITRATION',
+  'FUNDED',
+  'FULFILLMENT',
+  'RELEASE_REQUESTED',
+  'REFUND_REQUESTED',
+  'SIGNING',
+  'DISPUTED',
+  'ARBITRATION',
 ]);
 
 const MIN = 60;
@@ -77,7 +84,9 @@ export async function runPoller(ctx: ServiceCtx): Promise<PollResult> {
       }
       const backoff = Math.min(INTERVAL.funding * 2 ** Math.min(job.failures, 6), 6 * 3600);
       await ctx.db
-        .prepare('UPDATE scheduled_jobs SET next_poll_at = ?, failures = failures + 1, last_error = ?, last_polled_at = ? WHERE trade_id = ?')
+        .prepare(
+          'UPDATE scheduled_jobs SET next_poll_at = ?, failures = failures + 1, last_error = ?, last_polled_at = ? WHERE trade_id = ?',
+        )
         .bind(ctx.now() + backoff, redact(e).slice(0, 200), ctx.now(), job.trade_id)
         .run();
     }
@@ -99,7 +108,14 @@ async function toReview(ctx: ServiceCtx, tradeId: string, reason: string): Promi
   if (!t || t.status === 'NEEDS_REVIEW' || t.status === 'COMPLETE' || t.status === 'REFUNDED') return [];
   try {
     await transition(ctx.db, {
-      tradeId, from: t.status, to: 'NEEDS_REVIEW', expectedVersion: t.version, actorId: 0, action: 'needs_review', detail: reason, now: ctx.now(),
+      tradeId,
+      from: t.status,
+      to: 'NEEDS_REVIEW',
+      expectedVersion: t.version,
+      actorId: 0,
+      action: 'needs_review',
+      detail: reason,
+      now: ctx.now(),
       set: { sql: 'review_reason = ?', params: [reason] },
     });
   } catch (e) {
@@ -177,17 +193,45 @@ async function pollFunding(ctx: ServiceCtx, t: TradeRow, tip: number, out: Notic
     return INTERVAL.holding;
   }
   if (ev.verdict === 'funded') {
-    await transition(ctx.db, { tradeId: t.id, from: t.status, to: 'FUNDED', expectedVersion: t.version, actorId: 0, action: 'funded', now });
+    await transition(ctx.db, {
+      tradeId: t.id,
+      from: t.status,
+      to: 'FUNDED',
+      expectedVersion: t.version,
+      actorId: 0,
+      action: 'funded',
+      now,
+    });
     const fresh = (await getTrade(ctx.db, t.id))!;
     out.push(
-      ...(await notifySigners(ctx, fresh, `Handel #${t.id}: Einzahlung bestätigt (${ev.minConfirmations} Bestätigungen). Status: FINANZIERT.`)),
-      ...(s.seller ? [{ chatId: s.seller, text: `Handel #${t.id}: Du kannst jetzt liefern und anschließend „Lieferung erfolgt“ melden.`, buttons: [[{ text: 'Lieferung erfolgt', data: `t:${t.id}:delivered` }]] }] : []),
+      ...(await notifySigners(
+        ctx,
+        fresh,
+        `Handel #${t.id}: Einzahlung bestätigt (${ev.minConfirmations} Bestätigungen). Status: FINANZIERT.`,
+      )),
+      ...(s.seller
+        ? [
+            {
+              chatId: s.seller,
+              text: `Handel #${t.id}: Du kannst jetzt liefern und anschließend „Lieferung erfolgt“ melden.`,
+              buttons: [[{ text: 'Lieferung erfolgt', data: `t:${t.id}:delivered` }]],
+            },
+          ]
+        : []),
       ...groupNotice(fresh, STATE_LABEL_DE.FUNDED),
     );
     return INTERVAL.holding;
   }
   if ((ev.verdict === 'pending' || ev.verdict === 'partial') && t.status === 'READY_TO_FUND') {
-    await transition(ctx.db, { tradeId: t.id, from: 'READY_TO_FUND', to: 'FUNDING_SEEN', expectedVersion: t.version, actorId: 0, action: 'funding_seen', now });
+    await transition(ctx.db, {
+      tradeId: t.id,
+      from: 'READY_TO_FUND',
+      to: 'FUNDING_SEEN',
+      expectedVersion: t.version,
+      actorId: 0,
+      action: 'funding_seen',
+      now,
+    });
     if (s.buyer) {
       out.push({
         chatId: s.buyer,
@@ -201,17 +245,40 @@ async function pollFunding(ctx: ServiceCtx, t: TradeRow, tip: number, out: Notic
   }
   if (ev.verdict === 'none' && t.status === 'FUNDING_SEEN') {
     // previously seen funding disappeared (dropped from mempool or reorged out)
-    await transition(ctx.db, { tradeId: t.id, from: 'FUNDING_SEEN', to: 'READY_TO_FUND', expectedVersion: t.version, actorId: 0, action: 'funding_vanished', now });
-    if (s.buyer) out.push({ chatId: s.buyer, text: `Handel #${t.id}: Die gesehene Einzahlung ist nicht mehr sichtbar (verworfen/Reorg). Bitte prüfen.` });
+    await transition(ctx.db, {
+      tradeId: t.id,
+      from: 'FUNDING_SEEN',
+      to: 'READY_TO_FUND',
+      expectedVersion: t.version,
+      actorId: 0,
+      action: 'funding_vanished',
+      now,
+    });
+    if (s.buyer)
+      out.push({
+        chatId: s.buyer,
+        text: `Handel #${t.id}: Die gesehene Einzahlung ist nicht mehr sichtbar (verworfen/Reorg). Bitte prüfen.`,
+      });
     return INTERVAL.funding;
   }
-  if (reorged) out.push(...(await notifySigners(ctx, t, `Handel #${t.id}: Blockchain-Reorganisation erkannt. Bestätigungen werden neu gezählt.`)));
+  if (reorged)
+    out.push(...(await notifySigners(ctx, t, `Handel #${t.id}: Blockchain-Reorganisation erkannt. Bestätigungen werden neu gezählt.`)));
   const age = now - (t.params_locked_at ?? now);
   return ev.verdict === 'none' && age > 7 * 24 * 3600 ? INTERVAL.fundingIdle : INTERVAL.funding;
 }
 
 /** Funds should stay put while the trade is open. Any spend not made by our broadcast is flagged. */
 async function pollHolding(ctx: ServiceCtx, t: TradeRow, out: Notice[]): Promise<number> {
+  if (t.status === 'SIGNING' && ctx.cfg.automaticBroadcast) {
+    const s = await getLiveSession(ctx.db, t.id);
+    const n = s
+      ? await ctx.db.prepare('SELECT COUNT(*) AS n FROM psbt_signatures WHERE session_id = ?').bind(s.id).first<{ n: number }>()
+      : null;
+    if (s && (s.status === 'open' || s.status === 'finalized') && (n?.n ?? 0) >= 2) {
+      out.push(...(await broadcastSession(ctx, 0, s.id)));
+      return INTERVAL.broadcast;
+    }
+  }
   const ms = await getMultisig(ctx.db, t.id);
   if (!ms) return INTERVAL.holding;
   const utxos = await ctx.chain.getAddressUtxos(ms.address);
@@ -231,18 +298,43 @@ async function pollHolding(ctx: ServiceCtx, t: TradeRow, out: Notice[]): Promise
     if (t.status === 'SIGNING' && session && session.status !== 'locked' && os.spendingTxid === session.txid) {
       // our exact, validated transaction was sent by a signer's wallet: follow it like our own broadcast
       await transition(ctx.db, {
-        tradeId: t.id, from: 'SIGNING', to: 'BROADCAST', expectedVersion: t.version, actorId: 0, action: 'broadcast_external', detail: session.txid, now,
-        followUps: (g, gp) => [ctx.db.prepare(`UPDATE psbt_sessions SET status = 'broadcast', broadcast_at = ?, updated_at = ? WHERE id = ? AND ${g}`).bind(now, now, session.id, ...gp)],
+        tradeId: t.id,
+        from: 'SIGNING',
+        to: 'BROADCAST',
+        expectedVersion: t.version,
+        actorId: 0,
+        action: 'broadcast_external',
+        detail: session.txid,
+        now,
+        followUps: (g, gp) => [
+          ctx.db
+            .prepare(`UPDATE psbt_sessions SET status = 'broadcast', broadcast_at = ?, updated_at = ? WHERE id = ? AND ${g}`)
+            .bind(now, now, session.id, ...gp),
+        ],
       });
       return INTERVAL.broadcast;
     }
-    await ctx.db.prepare(`UPDATE funding_outputs SET status = 'spent', spent_txid = ?, updated_at = ? WHERE id = ?`).bind(os.spendingTxid, now, k.id).run();
+    await ctx.db
+      .prepare(`UPDATE funding_outputs SET status = 'spent', spent_txid = ?, updated_at = ? WHERE id = ?`)
+      .bind(os.spendingTxid, now, k.id)
+      .run();
     out.push(...(await toReview(ctx, t.id, 'Treuhand-UTXO wurde außerhalb des Bots ausgegeben (z. B. gemeinsame Signatur ohne Bot)')));
     return INTERVAL.holding;
   }
   if (utxos.length > known.length) {
-    await upsertUtxos(ctx, t, utxos.filter((u) => !known.some((k) => k.txid === u.txid && k.vout === u.vout)), []);
-    out.push(...(await notifySigners(ctx, t, `Handel #${t.id}: Zusätzliche Zahlung auf die Treuhandadresse erkannt. Diese wird NICHT automatisch verarbeitet.`)));
+    await upsertUtxos(
+      ctx,
+      t,
+      utxos.filter((u) => !known.some((k) => k.txid === u.txid && k.vout === u.vout)),
+      [],
+    );
+    out.push(
+      ...(await notifySigners(
+        ctx,
+        t,
+        `Handel #${t.id}: Zusätzliche Zahlung auf die Treuhandadresse erkannt. Diese wird NICHT automatisch verarbeitet.`,
+      )),
+    );
   }
   return INTERVAL.holding;
 }
@@ -267,15 +359,30 @@ async function pollBroadcast(ctx: ServiceCtx, t: TradeRow, tip: number, out: Not
   if (!st.confirmed || confirmations(tip, st.blockHeight) < ctx.cfg.minConfirmations) return INTERVAL.broadcast;
   const to = session.kind === 'release' ? 'COMPLETE' : 'REFUNDED';
   await transition(ctx.db, {
-    tradeId: t.id, from: 'BROADCAST', to, expectedVersion: t.version, actorId: 0, action: 'payout_confirmed', detail: session.txid, now,
+    tradeId: t.id,
+    from: 'BROADCAST',
+    to,
+    expectedVersion: t.version,
+    actorId: 0,
+    action: 'payout_confirmed',
+    detail: session.txid,
+    now,
     followUps: (g, gp) => [
       ctx.db.prepare(`UPDATE psbt_sessions SET status = 'confirmed', updated_at = ? WHERE id = ? AND ${g}`).bind(now, session.id, ...gp),
-      ctx.db.prepare(`UPDATE funding_outputs SET status = 'spent', spent_txid = ?, updated_at = ? WHERE trade_id = ? AND status = 'confirmed' AND ${g}`).bind(session.txid, now, t.id, ...gp),
+      ctx.db
+        .prepare(
+          `UPDATE funding_outputs SET status = 'spent', spent_txid = ?, updated_at = ? WHERE trade_id = ? AND status = 'confirmed' AND ${g}`,
+        )
+        .bind(session.txid, now, t.id, ...gp),
     ],
   });
   const fresh = (await getTrade(ctx.db, t.id))!;
   out.push(
-    ...(await notifySigners(ctx, fresh, `Handel #${t.id}: ${to === 'COMPLETE' ? 'Auszahlung' : 'Rückerstattung'} bestätigt. Handel ${STATE_LABEL_DE[to]}.`)),
+    ...(await notifySigners(
+      ctx,
+      fresh,
+      `Handel #${t.id}: ${to === 'COMPLETE' ? 'Auszahlung' : 'Rückerstattung'} bestätigt. Handel ${STATE_LABEL_DE[to]}.`,
+    )),
     ...groupNotice(fresh, STATE_LABEL_DE[to]),
   );
   return null;

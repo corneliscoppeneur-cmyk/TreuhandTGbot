@@ -71,9 +71,7 @@ export function planPayout(p: PayoutPlanInput): PayoutPlan {
   const totalIn = p.utxos.reduce((s, u) => s + u.valueSats, 0n);
 
   const recipientScript = addressToScript(p.recipientAddress, p.net);
-  const outputs: PayoutOutput[] = [
-    { purpose: 'recipient', address: p.recipientAddress.trim(), script: recipientScript, valueSats: 0n },
-  ];
+  const outputs: PayoutOutput[] = [{ purpose: 'recipient', address: p.recipientAddress.trim(), script: recipientScript, valueSats: 0n }];
   if (p.commissionSats > 0n) {
     if (p.commissionSats < DUST_LIMIT_SATS) throw new PsbtError('Provision unter Dust-Grenze');
     const commissionScript = addressToScript(p.commissionAddress, p.net);
@@ -88,7 +86,10 @@ export function planPayout(p: PayoutPlanInput): PayoutPlan {
     });
   }
 
-  const vsize = estimateVsize(p.utxos.length, outputs.map((o) => o.script));
+  const vsize = estimateVsize(
+    p.utxos.length,
+    outputs.map((o) => o.script),
+  );
   const minerFee = feeForVsize(vsize, p.feeRateSatVb);
   const maxFee = (p.amountSats * BigInt(p.maxFeePercent)) / 100n;
   if (minerFee > maxFee) throw new PsbtError(`Netzwerkgebühr ${minerFee} sat über Maximum ${maxFee} sat`);

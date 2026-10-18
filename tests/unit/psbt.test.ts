@@ -44,7 +44,9 @@ describe('payout plan', () => {
       net: NET,
     };
     expect(() => planPayout({ ...base, feeRateSatVb: 51 })).toThrow(PsbtError);
-    expect(() => planPayout({ ...base, utxos: [{ ...UTXO, valueSats: 20_000n }], amountSats: 20_000n, feeRateSatVb: 40 })).toThrow(/Maximum/);
+    expect(() => planPayout({ ...base, utxos: [{ ...UTXO, valueSats: 20_000n }], amountSats: 20_000n, feeRateSatVb: 40 })).toThrow(
+      /Maximum/,
+    );
   });
 
   it('refuses dust payouts and mainnet addresses on signet', () => {

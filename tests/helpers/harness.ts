@@ -9,7 +9,7 @@ import { hex } from '@scure/base';
 import type { BlockchainProvider, ChainUtxo, Outspend, TxStatus } from '../../src/blockchain/provider.ts';
 import { ProviderError } from '../../src/blockchain/provider.ts';
 import type { Env } from '../../src/config/env.ts';
-import { handleFetch, handleScheduled, WEBHOOK_PATH } from '../../src/index.ts';
+import { handleFetch, handleScheduled, WEBHOOK_PATH } from '../../src/app.ts';
 import { TestDb } from './d1.ts';
 import { testAddress } from './escrow.ts';
 
@@ -90,7 +90,14 @@ export class FakeChain implements BlockchainProvider {
   /** Simulates a payment to the escrow address. */
   pay(address: string, txid: string, value: bigint, confirmedAt: number | null = null) {
     const list = this.utxos.get(address) ?? [];
-    list.push({ txid, vout: 0, valueSats: value, confirmed: confirmedAt !== null, blockHeight: confirmedAt, blockHash: confirmedAt ? 'bb'.repeat(32) : null });
+    list.push({
+      txid,
+      vout: 0,
+      valueSats: value,
+      confirmed: confirmedAt !== null,
+      blockHeight: confirmedAt,
+      blockHash: confirmedAt ? 'bb'.repeat(32) : null,
+    });
     this.utxos.set(address, list);
   }
   confirmAll(address: string, height: number) {
@@ -129,14 +136,17 @@ export class Harness {
       let payload: Record<string, unknown> = {};
       const body = init?.body;
       if (typeof body === 'string') payload = JSON.parse(body);
-      else if (body instanceof FormData || (body && typeof (body as { get?: unknown }).get === 'function')) payload = { chat_id: Number((body as FormData).get('chat_id')) };
+      else if (body instanceof FormData || (body && typeof (body as { get?: unknown }).get === 'function'))
+        payload = { chat_id: Number((body as FormData).get('chat_id')) };
       else if (body) {
         // grammY streams multipart for InputFile; read chat_id from the text
         const text = await new Response(body as BodyInit).text();
         const m = /name="chat_id"\r\n\r\n(-?\d+)/.exec(text);
         payload = { chat_id: m ? Number(m[1]) : 0 };
       }
-      const kb = (payload.reply_markup as { inline_keyboard?: { text: string; callback_data?: string; url?: string }[][] } | undefined)?.inline_keyboard ?? [];
+      const kb =
+        (payload.reply_markup as { inline_keyboard?: { text: string; callback_data?: string; url?: string }[][] } | undefined)
+          ?.inline_keyboard ?? [];
       this.sent.push({
         method,
         chatId: Number(payload.chat_id),
@@ -144,9 +154,15 @@ export class Harness {
         buttons: kb.flat().map((b) => ({ text: b.text, data: b.callback_data, url: b.url })),
         document: method === 'sendDocument',
       });
-      return new Response(JSON.stringify({ ok: true, result: method === 'answerCallbackQuery' ? true : { message_id: 1, date: 0, chat: { id: payload.chat_id, type: 'private' } } }), {
-        headers: { 'content-type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          result: method === 'answerCallbackQuery' ? true : { message_id: 1, date: 0, chat: { id: payload.chat_id, type: 'private' } },
+        }),
+        {
+          headers: { 'content-type': 'application/json' },
+        },
+      );
     });
   }
 
@@ -220,6 +236,9 @@ export class Harness {
   }
 
   async trade(id: string) {
-    return this.db.raw.prepare('SELECT * FROM trades WHERE id = ?').get(id) as { status: string; version: number } & Record<string, unknown>;
+    return this.db.raw.prepare('SELECT * FROM trades WHERE id = ?').get(id) as { status: string; version: number } & Record<
+      string,
+      unknown
+    >;
   }
 }

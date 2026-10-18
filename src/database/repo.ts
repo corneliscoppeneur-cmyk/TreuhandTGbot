@@ -155,10 +155,20 @@ export async function listParticipants(db: Db, tradeId: string): Promise<Partici
 
 export function auditStmt(
   db: Db,
-  e: { tradeId: string | null; actorId: number; action: string; from?: string | null; to?: string | null; detail?: string | null; now: number },
+  e: {
+    tradeId: string | null;
+    actorId: number;
+    action: string;
+    from?: string | null;
+    to?: string | null;
+    detail?: string | null;
+    now: number;
+  },
 ): DbStatement {
   return db
-    .prepare('INSERT INTO audit_events (trade_id, actor_id, action, from_status, to_status, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .prepare(
+      'INSERT INTO audit_events (trade_id, actor_id, action, from_status, to_status, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
     .bind(e.tradeId, e.actorId, e.action, e.from ?? null, e.to ?? null, e.detail ?? null, e.now);
 }
 

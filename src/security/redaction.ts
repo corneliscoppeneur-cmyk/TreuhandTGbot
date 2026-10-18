@@ -23,7 +23,9 @@ export function looksLikeMnemonic(text: string): boolean {
 
 /** Looks like a private key / xprv / WIF anywhere in the text. */
 export function looksLikePrivateKey(text: string): boolean {
-  return /\b[tx]prv[1-9A-HJ-NP-Za-km-z]{100,}/.test(text) || /\b[yzYZuvUV]prv/.test(text) || /\b[5KLc9][1-9A-HJ-NP-Za-km-z]{50,51}\b/.test(text);
+  return (
+    /\b[tx]prv[1-9A-HJ-NP-Za-km-z]{100,}/.test(text) || /\b[yzYZuvUV]prv/.test(text) || /\b[5KLc9][1-9A-HJ-NP-Za-km-z]{50,51}\b/.test(text)
+  );
 }
 
 export function redact(input: unknown): string {

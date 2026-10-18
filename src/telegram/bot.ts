@@ -1,17 +1,46 @@
 import { Bot, GrammyError, InputFile, type Context } from 'grammy';
 import type { UserFromGetMe } from 'grammy/types';
 import { MAX_PSBT_BYTES, TELEGRAM_MAX_MESSAGE_CHARS } from '../config/constants.ts';
-import { getLiveSession, getMultisig, getOpenDispute, getSession, getTrade, isUserBlocked, listFunding, listParticipants, listUserTrades, upsertUserStmt, ConcurrencyError } from '../database/repo.ts';
+import {
+  getLiveSession,
+  getMultisig,
+  getOpenDispute,
+  getSession,
+  getTrade,
+  isUserBlocked,
+  listFunding,
+  listParticipants,
+  listUserTrades,
+  upsertUserStmt,
+  ConcurrencyError,
+} from '../database/repo.ts';
 import { AmountError, formatBtc, parseBtcAmount } from '../domain/amount.ts';
 import type { Notice, ServiceCtx } from '../domain/context.ts';
 import { UserError } from '../domain/context.ts';
 import { createInvite, listInvites, revokeInvite, startRedeem, submitAccessCode } from '../domain/invites.ts';
 import { confirmAddress, registerKey, reportAddressMismatch, verificationText } from '../domain/keys.ts';
-import { broadcastSession, decodeUploadedPsbt, markDelivered, requestRefund, requestRelease, sessionSummary, submitPayoutAddress, submitSignedPsbt } from '../domain/payout.ts';
+import {
+  broadcastSession,
+  decodeUploadedPsbt,
+  markDelivered,
+  requestRefund,
+  requestRelease,
+  sessionSummary,
+  submitPayoutAddress,
+  submitSignedPsbt,
+} from '../domain/payout.ts';
 import { PermissionError, ROLE_LABEL_DE, isRole, type Role } from '../domain/permissions.ts';
 import { STATE_LABEL_DE, TransitionError } from '../domain/state-machine.ts';
 import { agreeTerms, authorize, cancelTrade, createTrade, linkGroup } from '../domain/trade.ts';
-import { addDisputeNote, decideDispute, disputeText, DISPUTE_LIMITS_TEXT, listOpenDisputes, openDispute, takeCase } from '../disputes/disputes.ts';
+import {
+  addDisputeNote,
+  decideDispute,
+  disputeText,
+  DISPUTE_LIMITS_TEXT,
+  listOpenDisputes,
+  openDispute,
+  takeCase,
+} from '../disputes/disputes.ts';
 import { logError } from '../security/redaction.ts';
 import { clearFlow, getFlow, setFlow, type Flow } from './conversation.ts';
 import { mainMenu, supportMenu, toKeyboard, tradeButtons } from './keyboards.ts';
@@ -45,7 +74,11 @@ export async function deliver(api: Bot['api'], svc: ServiceCtx, notices: Notice[
       }
     } catch (e) {
       if (e instanceof GrammyError && (e.error_code === 403 || e.error_code === 400)) {
-        await svc.db.prepare('UPDATE users SET bot_unreachable = 1 WHERE telegram_user_id = ?').bind(n.chatId).run().catch(() => undefined);
+        await svc.db
+          .prepare('UPDATE users SET bot_unreachable = 1 WHERE telegram_user_id = ?')
+          .bind(n.chatId)
+          .run()
+          .catch(() => undefined);
       } else {
         logError('deliver', e);
       }
@@ -55,7 +88,11 @@ export async function deliver(api: Bot['api'], svc: ServiceCtx, notices: Notice[
 
 function isUserFacing(e: unknown): e is Error {
   return (
-    e instanceof UserError || e instanceof PermissionError || e instanceof TransitionError || e instanceof ConcurrencyError || e instanceof AmountError
+    e instanceof UserError ||
+    e instanceof PermissionError ||
+    e instanceof TransitionError ||
+    e instanceof ConcurrencyError ||
+    e instanceof AmountError
   );
 }
 
@@ -78,7 +115,11 @@ export function createBot(svc: ServiceCtx): Bot {
       await next();
     } catch (e) {
       // allow Telegram to retry after transient failures (e.g. D1 outage)
-      await db.prepare('DELETE FROM processed_telegram_updates WHERE update_id = ?').bind(ctx.update.update_id).run().catch(() => undefined);
+      await db
+        .prepare('DELETE FROM processed_telegram_updates WHERE update_id = ?')
+        .bind(ctx.update.update_id)
+        .run()
+        .catch(() => undefined);
       throw e;
     }
   });
@@ -146,9 +187,15 @@ export function createBot(svc: ServiceCtx): Bot {
   async function showInvites(ctx: Context, userId: number, tradeId: string) {
     const invites = await listInvites(svc, userId, tradeId);
     const rows = [
-      [{ text: 'Käufer einladen', data: `i:${tradeId}:buyer` }, { text: 'Verkäufer einladen', data: `i:${tradeId}:seller` }],
+      [
+        { text: 'Käufer einladen', data: `i:${tradeId}:buyer` },
+        { text: 'Verkäufer einladen', data: `i:${tradeId}:seller` },
+      ],
       [{ text: 'Schlichter einladen', data: `i:${tradeId}:arbiter` }],
-      [{ text: 'Vermittler einladen', data: `i:${tradeId}:mediator` }, { text: 'Beobachter einladen', data: `i:${tradeId}:observer` }],
+      [
+        { text: 'Vermittler einladen', data: `i:${tradeId}:mediator` },
+        { text: 'Beobachter einladen', data: `i:${tradeId}:observer` },
+      ],
       ...invites.map((i) => [{ text: `Widerrufen: ${ROLE_LABEL_DE[i.role]} (#${i.id})`, data: `r:${tradeId}:${i.id}` }]),
     ];
     await reply(ctx, `Einladungen für #${tradeId}\nAktive Einladungen: ${invites.length}`, rows);
@@ -199,8 +246,15 @@ export function createBot(svc: ServiceCtx): Bot {
   );
   async function showDisputes(ctx: Context, userId: number) {
     const ds = await listOpenDisputes(svc, userId);
-    if (ds.length === 0) return void (await reply(ctx, `Keine offenen Streitfälle.\n\n${DISPUTE_LIMITS_TEXT}`, [[{ text: 'Support', url: svc.cfg.supportUrl }]]));
-    await reply(ctx, 'Offene Streitfälle:', ds.map((d) => [{ text: `#${d.trade_id} · ${d.status}`, data: `t:${d.trade_id}:view` }]));
+    if (ds.length === 0)
+      return void (await reply(ctx, `Keine offenen Streitfälle.\n\n${DISPUTE_LIMITS_TEXT}`, [
+        [{ text: 'Support', url: svc.cfg.supportUrl }],
+      ]));
+    await reply(
+      ctx,
+      'Offene Streitfälle:',
+      ds.map((d) => [{ text: `#${d.trade_id} · ${d.status}`, data: `t:${d.trade_id}:view` }]),
+    );
   }
   bot.command('disputes', (ctx) => guard(ctx, () => showDisputes(ctx, ctx.from!.id)));
   bot.command('status', (ctx) =>
@@ -219,7 +273,10 @@ export function createBot(svc: ServiceCtx): Bot {
       const id = ctx.match.trim().replace(/^#/, '').toUpperCase();
       if (!TRADE_ID_RE.test(id) || !ctx.chat) return void (await reply(ctx, 'Nutzung in der Gruppe: /link <ID>'));
       await linkGroup(svc, ctx.from!.id, id, ctx.chat.id);
-      await reply(ctx, `Gruppe mit Handel #${id} verknüpft. Hier erscheinen nur Statusmeldungen – keine Adressen, Schlüssel oder Zahlungsdaten.\n\n${privacyText(svc.cfg)}`);
+      await reply(
+        ctx,
+        `Gruppe mit Handel #${id} verknüpft. Hier erscheinen nur Statusmeldungen – keine Adressen, Schlüssel oder Zahlungsdaten.\n\n${privacyText(svc.cfg)}`,
+      );
     }),
   );
 
@@ -234,14 +291,23 @@ export function createBot(svc: ServiceCtx): Bot {
 
       if ((m = /^m:(new|trades|invites|disputes|fees|help|support|security|menu)$/.exec(data))) {
         switch (m[1]) {
-          case 'new': return startNewTrade(ctx, userId);
-          case 'trades': case 'invites': return void (await showTrades(ctx, userId));
-          case 'disputes': return showDisputes(ctx, userId);
-          case 'fees': return void (await reply(ctx, feesText(svc.cfg)));
-          case 'help': return void (await reply(ctx, HELP_TEXT, [[{ text: 'Sicherheitsinformationen', data: 'm:security' }]]));
-          case 'support': return void (await reply(ctx, 'Support', supportMenu(svc.cfg)));
-          case 'security': return void (await reply(ctx, securityText()));
-          default: return showMenu(ctx);
+          case 'new':
+            return startNewTrade(ctx, userId);
+          case 'trades':
+          case 'invites':
+            return void (await showTrades(ctx, userId));
+          case 'disputes':
+            return showDisputes(ctx, userId);
+          case 'fees':
+            return void (await reply(ctx, feesText(svc.cfg)));
+          case 'help':
+            return void (await reply(ctx, HELP_TEXT, [[{ text: 'Sicherheitsinformationen', data: 'm:security' }]]));
+          case 'support':
+            return void (await reply(ctx, 'Support', supportMenu(svc.cfg)));
+          case 'security':
+            return void (await reply(ctx, securityText()));
+          default:
+            return showMenu(ctx);
         }
       }
 
@@ -278,7 +344,10 @@ export function createBot(svc: ServiceCtx): Bot {
       case 'terms': {
         const a = await authorize(svc, userId, tradeId, 'view_trade');
         const rows =
-          a.trade.status === 'AGREEMENT' && a.participant && a.participant.agreed_hash !== a.trade.agreement_hash && (a.role === 'buyer' || a.role === 'seller' || a.role === 'arbiter')
+          a.trade.status === 'AGREEMENT' &&
+          a.participant &&
+          a.participant.agreed_hash !== a.trade.agreement_hash &&
+          (a.role === 'buyer' || a.role === 'seller' || a.role === 'arbiter')
             ? [[{ text: 'Bedingungen akzeptieren', data: `t:${tradeId}:agree:${a.trade.agreement_hash!.slice(0, 16)}` }]]
             : undefined;
         return void (await reply(ctx, termsView(a.trade), rows));
@@ -289,7 +358,11 @@ export function createBot(svc: ServiceCtx): Bot {
         await authorize(svc, userId, tradeId, 'view_participants');
         const parts = await listParticipants(db, tradeId);
         // no usernames/ids exposed: roles and status only
-        return void (await reply(ctx, `Teilnehmer #${tradeId}:\n` + parts.map((p) => `• ${ROLE_LABEL_DE[p.role]}${p.telegram_user_id === userId ? ' (du)' : ''}`).join('\n')));
+        return void (await reply(
+          ctx,
+          `Teilnehmer #${tradeId}:\n` +
+            parts.map((p) => `• ${ROLE_LABEL_DE[p.role]}${p.telegram_user_id === userId ? ' (du)' : ''}`).join('\n'),
+        ));
       }
       case 'fees':
         await authorize(svc, userId, tradeId, 'view_trade');
@@ -331,7 +404,9 @@ export function createBot(svc: ServiceCtx): Bot {
         await setFlow(db, userId, { flow: 'addr', step: 'addr', data: { tradeId } }, svc.now());
         return void (await reply(ctx, `Sende jetzt deine ${svc.net.name}-Empfangsadresse für #${tradeId} (nur hier privat).`));
       case 'cancel':
-        return void (await reply(ctx, `Handel #${tradeId} wirklich abbrechen?`, [[{ text: 'Ja, abbrechen', data: `t:${tradeId}:cancelok` }]]));
+        return void (await reply(ctx, `Handel #${tradeId} wirklich abbrechen?`, [
+          [{ text: 'Ja, abbrechen', data: `t:${tradeId}:cancelok` }],
+        ]));
       case 'cancelok':
         await send(await cancelTrade(svc, userId, tradeId));
         return void (await reply(ctx, `Handel #${tradeId} abgebrochen.`));
@@ -339,9 +414,15 @@ export function createBot(svc: ServiceCtx): Bot {
         const a = await authorize(svc, userId, tradeId, 'view_trade');
         const can = a.role === 'buyer' || a.role === 'seller';
         if (!can) return void (await reply(ctx, 'Streitfälle eröffnen Käufer oder Verkäufer. Support:', supportMenu(svc.cfg)));
-        if (await getOpenDispute(db, tradeId)) return void (await reply(ctx, 'Es gibt bereits einen offenen Streitfall.', [[{ text: 'Stellungnahme senden', data: `d:${tradeId}:ask` }]]));
+        if (await getOpenDispute(db, tradeId))
+          return void (await reply(ctx, 'Es gibt bereits einen offenen Streitfall.', [
+            [{ text: 'Stellungnahme senden', data: `d:${tradeId}:ask` }],
+          ]));
         await setFlow(db, userId, { flow: 'dispute', step: 'reason', data: { tradeId } }, svc.now());
-        return void (await reply(ctx, `Probleme mit Handel #${tradeId}\n\n${DISPUTE_LIMITS_TEXT}\n\nBitte beschreibe das Problem (keine privaten Daten, ggf. Cryptgeon-Link):`));
+        return void (await reply(
+          ctx,
+          `Probleme mit Handel #${tradeId}\n\n${DISPUTE_LIMITS_TEXT}\n\nBitte beschreibe das Problem (keine privaten Daten, ggf. Cryptgeon-Link):`,
+        ));
       }
     }
   }
@@ -370,7 +451,13 @@ export function createBot(svc: ServiceCtx): Bot {
     if (action === 'show') {
       const text = sessionSummary(a.trade, session, svc.net.name);
       await reply(ctx, text);
-      return deliver(bot.api, svc, [{ chatId: userId, text: 'PSBT-Datei:', document: { filename: `trade-${a.trade.id}-${session.id}.psbt`, content: session.base_psbt } }]);
+      return deliver(bot.api, svc, [
+        {
+          chatId: userId,
+          text: 'PSBT-Datei:',
+          document: { filename: `trade-${a.trade.id}-${session.id}.psbt`, content: session.base_psbt },
+        },
+      ]);
     }
     return send(await broadcastSession(svc, userId, sessionId));
   }
@@ -392,11 +479,17 @@ export function createBot(svc: ServiceCtx): Bot {
     if (action === 'ask') {
       await authorize(svc, userId, tradeId, 'view_dispute');
       await setFlow(db, userId, { flow: 'dnote', step: 'note', data: { tradeId } }, svc.now());
-      return void (await reply(ctx, 'Nachricht zum Streitfall eingeben (wird an Käufer, Verkäufer und Schlichter weitergegeben, keine privaten Daten):'));
+      return void (await reply(
+        ctx,
+        'Nachricht zum Streitfall eingeben (wird an Käufer, Verkäufer und Schlichter weitergegeben, keine privaten Daten):',
+      ));
     }
     await authorize(svc, userId, tradeId, 'decide_dispute');
     await setFlow(db, userId, { flow: 'decide', step: 'note', data: { tradeId, decision: action as 'release' | 'refund' } }, svc.now());
-    await reply(ctx, `Entscheidung „${action === 'release' ? 'Release an Verkäufer' : 'Refund an Käufer'}“ – bitte Begründung eingeben (wird dokumentiert):`);
+    await reply(
+      ctx,
+      `Entscheidung „${action === 'release' ? 'Release an Verkäufer' : 'Refund an Käufer'}“ – bitte Begründung eingeben (wird dokumentiert):`,
+    );
   }
 
   async function onNewTradeRole(ctx: Context, userId: number, role: 'buyer' | 'seller') {
@@ -418,7 +511,11 @@ export function createBot(svc: ServiceCtx): Bot {
     if (!f || f.flow !== 'newtrade' || f.step !== 'confirm') throw new UserError('Kein aktiver Dialog. /newtrade');
     const d = f.data;
     const t = await createTrade(svc, userId, {
-      title: d.title!, description: d.description!, terms: d.terms!, amountSats: BigInt(d.amountSats!), creatorRole: d.role!,
+      title: d.title!,
+      description: d.description!,
+      terms: d.terms!,
+      amountSats: BigInt(d.amountSats!),
+      creatorRole: d.role!,
     });
     await clearFlow(db, userId);
     await reply(ctx, `Handel #${t.id} erstellt. Lade jetzt die anderen Parteien ein (Käufer/Verkäufer und ein unabhängiger Schlichter).`, [
@@ -447,12 +544,20 @@ export function createBot(svc: ServiceCtx): Bot {
         if (f.step === 'amount') {
           d.amountSats = parseBtcAmount(text).toString();
           await setFlow(db, userId, { flow: 'newtrade', step: 'terms', data: d }, now);
-          return void (await reply(ctx, `Betrag: ${formatBtc(BigInt(d.amountSats))} BTC\n\nSchritt 4/6 – Handelsbedingungen (Lieferung, Fristen, Rückgabe):`));
+          return void (await reply(
+            ctx,
+            `Betrag: ${formatBtc(BigInt(d.amountSats))} BTC\n\nSchritt 4/6 – Handelsbedingungen (Lieferung, Fristen, Rückgabe):`,
+          ));
         }
         if (f.step === 'terms') {
           d.terms = text.slice(0, 4000);
           await setFlow(db, userId, { flow: 'newtrade', step: 'role', data: d }, now);
-          return void (await reply(ctx, 'Schritt 5/6 – Deine Rolle:', [[{ text: 'Ich bin Käufer', data: 'n:role:buyer' }, { text: 'Ich bin Verkäufer', data: 'n:role:seller' }]]));
+          return void (await reply(ctx, 'Schritt 5/6 – Deine Rolle:', [
+            [
+              { text: 'Ich bin Käufer', data: 'n:role:buyer' },
+              { text: 'Ich bin Verkäufer', data: 'n:role:seller' },
+            ],
+          ]));
         }
         return void (await reply(ctx, 'Bitte die Buttons verwenden oder /cancel.'));
       }
@@ -478,7 +583,12 @@ export function createBot(svc: ServiceCtx): Bot {
       }
       case 'dispute': {
         if (f.step === 'reason') {
-          await setFlow(db, userId, { flow: 'dispute', step: 'links', data: { tradeId: f.data.tradeId, reason: text.slice(0, 3000) } }, now);
+          await setFlow(
+            db,
+            userId,
+            { flow: 'dispute', step: 'links', data: { tradeId: f.data.tradeId, reason: text.slice(0, 3000) } },
+            now,
+          );
           return void (await reply(ctx, 'Optional: externe Beweislinks (https, durch Leerzeichen getrennt) – oder „-“ für keine:'));
         }
         const links = text.trim() === '-' ? null : text;

@@ -1,13 +1,5 @@
 import { CONTRACT_VERSION, MAX_DESCRIPTION_CHARS, MAX_TERMS_CHARS, MAX_TITLE_CHARS } from '../config/constants.ts';
-import {
-  auditStmt,
-  getParticipant,
-  getTrade,
-  listParticipants,
-  transition,
-  type ParticipantRow,
-  type TradeRow,
-} from '../database/repo.ts';
+import { auditStmt, getParticipant, getTrade, listParticipants, transition, type ParticipantRow, type TradeRow } from '../database/repo.ts';
 import { sha256Hex, newTradeId } from '../security/tokens.ts';
 import { looksLikeMnemonic, looksLikePrivateKey } from '../security/redaction.ts';
 import type { Notice, ServiceCtx } from './context.ts';
@@ -24,6 +16,7 @@ export interface NewTradeInput {
 }
 
 export function cleanText(text: string, max: number, field: string): string {
+  // eslint-disable-next-line no-control-regex -- strip control chars from user input
   const t = text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim();
   if (t.length === 0) throw new UserError(`${field} darf nicht leer sein`);
   if (t.length > max) throw new UserError(`${field} ist zu lang (max. ${max} Zeichen)`);
@@ -46,8 +39,20 @@ export async function createTrade(ctx: ServiceCtx, userId: number, input: NewTra
            refund_commission_bps, contract_version, status, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INVITING', ?, ?)`,
       )
-      .bind(id, userId, title, description, terms, Number(input.amountSats), ctx.cfg.network, ctx.cfg.commissionBps,
-        ctx.cfg.refundCommissionBps, CONTRACT_VERSION, now, now),
+      .bind(
+        id,
+        userId,
+        title,
+        description,
+        terms,
+        Number(input.amountSats),
+        ctx.cfg.network,
+        ctx.cfg.commissionBps,
+        ctx.cfg.refundCommissionBps,
+        CONTRACT_VERSION,
+        now,
+        now,
+      ),
     ctx.db
       .prepare('INSERT INTO participants (trade_id, telegram_user_id, role, joined_at) VALUES (?, ?, ?, ?)')
       .bind(id, userId, input.creatorRole, now),
@@ -158,7 +163,13 @@ export async function agreeTerms(ctx: ServiceCtx, userId: number, tradeId: strin
   if (signers.length === 3 && signers.every((p) => p.agreed_hash === a.trade.agreement_hash)) {
     const fresh = await getTrade(ctx.db, tradeId);
     await transition(ctx.db, {
-      tradeId, from: 'AGREEMENT', to: 'KEY_SETUP', expectedVersion: fresh!.version, actorId: userId, action: 'all_agreed', now,
+      tradeId,
+      from: 'AGREEMENT',
+      to: 'KEY_SETUP',
+      expectedVersion: fresh!.version,
+      actorId: userId,
+      action: 'all_agreed',
+      now,
     });
     return signers.map((p) => ({
       chatId: p.telegram_user_id,
@@ -184,7 +195,13 @@ export async function cancelTrade(ctx: ServiceCtx, userId: number, tradeId: stri
   }
   const now = ctx.now();
   await transition(ctx.db, {
-    tradeId, from, to: 'CANCELLED', expectedVersion: a.trade.version, actorId: userId, action: 'trade_cancelled', now,
+    tradeId,
+    from,
+    to: 'CANCELLED',
+    expectedVersion: a.trade.version,
+    actorId: userId,
+    action: 'trade_cancelled',
+    now,
     followUps: (g, gp) => [
       ctx.db.prepare(`UPDATE invites SET status = 'revoked' WHERE trade_id = ? AND status = 'active' AND ${g}`).bind(tradeId, ...gp),
       ctx.db.prepare(`DELETE FROM scheduled_jobs WHERE trade_id = ? AND ${g}`).bind(tradeId, ...gp),
