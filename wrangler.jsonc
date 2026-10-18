@@ -30,8 +30,8 @@
     "CRYPTGEON_URL": "https://cryptgeon.org",
     "DEFAULT_COMMISSION_BPS": "300",
     "REFUND_COMMISSION_BPS": "0",
-    // Operator's own receive address (signet). PLACEHOLDER (BIP-173 test vector) – replace with your own tb1… address.
-    "COMMISSION_ADDRESS": "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx",
+    // Operator fee address (Sparrow wallet Betreiber-Gebuehren, signet, m/84h/1h/0h/0/0)
+    "COMMISSION_ADDRESS": "tb1qpk4zdz27q9vq9prgymyk7fg23pv99k8722e300",
     "MIN_CONFIRMATIONS_SIGNET": "1",
     "MIN_CONFIRMATIONS_MAINNET": "3",
     "BLOCKCHAIN_PROVIDER": "esplora",
@@ -43,9 +43,9 @@
     "ENABLE_AUTOMATIC_BROADCAST": "false",
     "ENABLE_CUSTODIAL_FEATURES": "false",
     "ADMIN_TELEGRAM_IDS": "7472753006",
-    // Operator mode (automatic arbiter + upfront fee). Fill in after creating the wallets in Sparrow (see docs/OPERATOR-SETUP.md):
-    // "OPERATOR_TELEGRAM_ID": "7472753006",
-    // "OPERATOR_ARBITER_KEY": "[fingerprint/48h/1h/0h/2h]tpub…",
+    // Operator mode: operator is the automatic arbiter (public key only, see docs/OPERATOR-SETUP.md)
+    "OPERATOR_TELEGRAM_ID": "7472753006",
+    "OPERATOR_ARBITER_KEY": "[cf1d1361/48h/1h/0h/2h]tpubDEkEGhkS3MnzBP6kTYxSHhXjdoAKuf1rWitfyqKp5tfJPirjgVxeappseFg4G6RsZuCiwfhaYLiRer5eu5MPBZubxJ8dKDUkdjL2UBaMWzG",
     "DATA_RETENTION_DAYS": "180",
   },
 }
