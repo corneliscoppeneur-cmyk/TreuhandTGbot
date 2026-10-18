@@ -12,6 +12,7 @@
 | Von bitcoinjs-lib finalisierte PSBT wird vom Bot akzeptiert | bestanden | `tests/unit/psbt.test.ts` |
 | Descriptor-Prüfsumme nach BIP-380 | bestanden | Testvektor |
 | Live-Signet: Tip, Fee-Schätzung, UTXO-Abfrage, Cross-Check | bestanden (2026-10-18) | `npm run verify-signet` |
+| Echte On-Chain-Auszahlung: unsere PSBT/2-von-3-Witness vom Netzwerk akzeptiert und bestätigt | bestanden (2026-10-18, Mutinynet) | txid 956b3847…52b8, `docs/SIGNET-RUNBOOK.md` |
 
 Grenze: Diese Tests zeigen, dass unsere Daten konsistent und standardkonform sind. Sie beweisen nicht, dass eine bestimmte GUI-Wallet die PSBT importiert und signiert.
 

@@ -1,6 +1,6 @@
 # Signet-Runbook (manueller Ende-zu-Ende-Test)
 
-**Status:** noch nicht durchgeführt. Benötigt: echtes Bot-Token, Cloudflare-Deployment, drei Signet-Wallets, Signet-Coins (Faucet).
+**Status (2026-10-18):** Automatisierter On-Chain-Durchlauf bestanden (Skript `scripts/signet-e2e.ts`, echter Bot-Code lokal, echte Chain Mutinynet-Signet, Käufer/Verkäufer simuliert mit Testschlüsseln). Noch offen: Durchlauf mit GUI-Wallets (Sparrow) und echten Telegram-Konten.
 
 ## Vorbereitung
 1. Deployment nach DEPLOYMENT.md.
@@ -29,4 +29,5 @@
 ## Ergebnisprotokoll
 | Datum | Variante | Wallets | Funding-txid | Payout-txid | Ergebnis |
 |---|---|---|---|---|---|
-| | | | | | |
+| 2026-10-18 | Überzahlung (Faucet schickte 500.000 statt 10.546 sat) | Skript | 23c78afe…bf2d | – | ✅ NEEDS_REVIEW + Admin-Meldung, keine Auszahlung |
+| 2026-10-18 | Release (Betreiber-Modus, 3 % Gebühr) | Skript (Testschlüssel) | 138cd1b7…903c | 956b3847ba56ba4f8db9db15633c51ebde9bf3073a425aa1cc9c871735f852b8 | ✅ COMPLETE: 485.081 sat an Verkäufer, 14.563 sat Gebühr an Betreiber, 356 sat Netzwerkgebühr, Mutinynet |
