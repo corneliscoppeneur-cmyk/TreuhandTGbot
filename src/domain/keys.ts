@@ -97,7 +97,7 @@ export function depositMessage(
 export async function registerKey(ctx: ServiceCtx, userId: number, tradeId: string, input: string): Promise<Notice[]> {
   if (looksLikeMnemonic(input) || looksLikePrivateKey(input)) {
     throw new UserError(
-      '⚠️ Das ist ein PRIVATER Schlüssel oder eine Seed-Phrase. Lösche die Nachricht sofort und betrachte die Wallet als kompromittiert. Sende nur den öffentlichen Schlüssel (tpub).',
+      `⚠️ Das ist ein PRIVATER Schlüssel oder eine Seed-Phrase. Lösche die Nachricht sofort und betrachte die Wallet als kompromittiert. Sende nur den öffentlichen Schlüssel (${ctx.net.name === 'signet' ? 'tpub' : 'xpub'}).`,
     );
   }
   const a = await authorize(ctx, userId, tradeId, 'register_key');

@@ -15,26 +15,33 @@ export function rich(markup: string): MessageContent {
   return { text: toPlain(markup), rich: markup };
 }
 
-export const MAIN_MENU = html(
-  `${b('₿ BTC TREUHAND')}\n` +
-    `${i('Sicher mit Bitcoin handeln – ohne dem Gegenüber blind vertrauen zu müssen.')}\n\n` +
-    `${b('So funktioniert es:')}\n` +
-    '1️⃣ Du legst einen Handel an und lädst Käufer bzw. Verkäufer und einen neutralen Schlichter ein.\n' +
-    '2️⃣ Der Käufer zahlt auf ein gemeinsames Treuhand-Konto. Es öffnet sich nur, wenn 2 der 3 Beteiligten zustimmen.\n' +
-    '3️⃣ Ist die Ware da, geben Käufer und Verkäufer das Geld gemeinsam frei. Bei Streit entscheidet der Schlichter.\n\n' +
-    `🔒 ${b('Der Bot hat nie Zugriff auf dein Geld')} – er hält keine Coins und keine Schlüssel.\n` +
-    `🧪 ${i('Testbetrieb: Es wird mit Test-Bitcoin (Signet) gehandelt, die keinen Wert haben.')}`,
-);
+/** Main menu text; test-network hint only on signet. */
+export function mainMenuText(cfg: AppConfig): MessageContent {
+  return html(
+    `${b('₿ BTC TREUHAND')}\n` +
+      `${i('Sicher mit Bitcoin handeln – ohne dem Gegenüber blind vertrauen zu müssen.')}\n\n` +
+      `${b('So funktioniert es:')}\n` +
+      '1️⃣ Du legst einen Handel an und lädst Käufer bzw. Verkäufer und einen neutralen Schlichter ein.\n' +
+      '2️⃣ Der Käufer zahlt auf ein gemeinsames Treuhand-Konto. Es öffnet sich nur, wenn 2 der 3 Beteiligten zustimmen.\n' +
+      '3️⃣ Ist die Ware da, geben Käufer und Verkäufer das Geld gemeinsam frei. Bei Streit entscheidet der Schlichter.\n\n' +
+      `🔒 ${b('Der Bot hat nie Zugriff auf dein Geld')} – er hält keine Coins und keine Schlüssel.` +
+      (cfg.network === 'signet' ? `\n🧪 ${i('Testbetrieb: Es wird mit Test-Bitcoin (Signet) gehandelt, die keinen Wert haben.')}` : ''),
+  );
+}
 
 /** Plain-language glossary, used in help and wherever a technical term first appears. */
-export const GLOSSARY =
-  `${b('Begriffe kurz erklärt')}\n` +
-  `• ${b('Treuhand-Konto (Multisig)')}: ein gemeinsames Bitcoin-Schließfach mit 3 Schlüsseln. 2 davon sind zum Öffnen nötig.\n` +
-  `• ${b('Öffentlicher Schlüssel (tpub)')}: wie eine Kontonummer – ungefährlich zu teilen. Damit wird das Schließfach gebaut.\n` +
-  `• ${b('Seed / Wiederherstellungswörter')}: dein Generalschlüssel. ${b('Niemals teilen')}, auch nicht mit dem Bot oder Support.\n` +
-  `• ${b('PSBT')}: ein Überweisungsentwurf. Deine Wallet zeigt ihn dir an, du prüfst ihn und unterschreibst.\n` +
-  `• ${b('Schlichter')}: neutrale dritte Person. Entscheidet nur im Streitfall und kann allein nie auszahlen.\n` +
-  `• ${b('Signet')}: Bitcoin-Testnetz. Coins haben keinen Wert – ideal zum Ausprobieren.`;
+/** Plain-language glossary for the configured network. */
+function glossary(cfg: AppConfig): string {
+  return (
+    `${b('Begriffe kurz erklärt')}\n` +
+    `• ${b('Treuhand-Konto (Multisig)')}: ein gemeinsames Bitcoin-Schließfach mit 3 Schlüsseln. 2 davon sind zum Öffnen nötig.\n` +
+    `• ${b(`Öffentlicher Schlüssel (${cfg.network === 'signet' ? 'tpub' : 'xpub'})`)}: wie eine Kontonummer – ungefährlich zu teilen. Damit wird das Schließfach gebaut.\n` +
+    `• ${b('Seed / Wiederherstellungswörter')}: dein Generalschlüssel. ${b('Niemals teilen')}, auch nicht mit dem Bot oder Support.\n` +
+    `• ${b('PSBT')}: ein Überweisungsentwurf. Deine Wallet zeigt ihn dir an, du prüfst ihn und unterschreibst.\n` +
+    `• ${b('Schlichter')}: neutrale dritte Person. Entscheidet nur im Streitfall und kann allein nie auszahlen.` +
+    (cfg.network === 'signet' ? `\n• ${b('Signet')}: Bitcoin-Testnetz. Coins haben keinen Wert – ideal zum Ausprobieren.` : '')
+  );
+}
 
 export function privacyText(cfg: AppConfig): MessageContent {
   return html(
@@ -74,20 +81,25 @@ export function feesText(cfg: AppConfig): MessageContent {
   return html(feesHtml(cfg));
 }
 
-export const HELP = html(
-  `${b('❓ So läuft ein Handel ab')}\n\n` +
-    `${b('1. Anlegen')} – Titel, Beschreibung, Betrag und Bedingungen eingeben, eigene Rolle wählen.\n` +
-    `${b('2. Einladen')} – Link und Zugangscode an Käufer/Verkäufer und an einen neutralen Schlichter schicken (am besten getrennt).\n` +
-    `${b('3. Zustimmen')} – alle drei lesen die Bedingungen und tippen auf „Akzeptieren“.\n` +
-    `${b('4. Schlüssel')} – jeder sendet seinen öffentlichen Wallet-Schlüssel. Daraus entsteht das gemeinsame Treuhand-Konto.\n` +
-    `${b('5. Prüfen')} – jeder vergleicht die Treuhand-Adresse in seiner eigenen Wallet und bestätigt.\n` +
-    `${b('6. Einzahlen')} – der Käufer überweist den genauen Betrag. Der Bot meldet, sobald das Geld sicher angekommen ist.\n` +
-    `${b('7. Liefern')} – der Verkäufer liefert und meldet es im Bot.\n` +
-    `${b('8. Freigeben')} – der Käufer gibt frei, beide unterschreiben die Auszahlung in ihrer Wallet, der Bot sendet sie ab.\n\n` +
-    `${b('Probleme?')} Tippe im Handel auf „Probleme mit Admin“. Dann stoppt der Bot alle Auszahlungen und der Schlichter entscheidet.\n\n` +
-    `${GLOSSARY}\n\n` +
-    `${b('Befehle')}: /newtrade neuer Handel · /mytrades meine Handel · /fees Gebühren · /privacy Datenschutz · /support Hilfe · /cancel Eingabe abbrechen`,
-);
+/** How a trade works; mentions the automatic arbiter in operator mode. */
+export function helpText(cfg: AppConfig): MessageContent {
+  return html(
+    `${b('❓ So läuft ein Handel ab')}\n\n` +
+      `${b('1. Anlegen')} – Titel, Beschreibung, Betrag und Bedingungen eingeben, eigene Rolle wählen.\n` +
+      (cfg.operatorId !== null
+        ? `${b('2. Einladen')} – Link und Zugangscode an dein Gegenüber schicken (am besten getrennt). Der neutrale Schlichter ist automatisch dabei.\n`
+        : `${b('2. Einladen')} – Link und Zugangscode an Käufer/Verkäufer und an einen neutralen Schlichter schicken (am besten getrennt).\n`) +
+      `${b('3. Zustimmen')} – alle drei lesen die Bedingungen und tippen auf „Akzeptieren“.\n` +
+      `${b('4. Schlüssel')} – jeder sendet seinen öffentlichen Wallet-Schlüssel. Daraus entsteht das gemeinsame Treuhand-Konto.\n` +
+      `${b('5. Prüfen')} – jeder vergleicht die Treuhand-Adresse in seiner eigenen Wallet und bestätigt.\n` +
+      `${b('6. Einzahlen')} – der Käufer überweist den genauen Betrag. Der Bot meldet, sobald das Geld sicher angekommen ist.\n` +
+      `${b('7. Liefern')} – der Verkäufer liefert und meldet es im Bot.\n` +
+      `${b('8. Freigeben')} – der Käufer gibt frei, beide unterschreiben die Auszahlung in ihrer Wallet, der Bot sendet sie ab.\n\n` +
+      `${b('Probleme?')} Tippe im Handel auf „Probleme mit Admin“. Dann stoppt der Bot alle Auszahlungen und der Schlichter entscheidet.\n\n` +
+      `${glossary(cfg)}\n\n` +
+      `${b('Befehle')}: /newtrade neuer Handel · /mytrades meine Handel · /fees Gebühren · /privacy Datenschutz · /support Hilfe · /cancel Eingabe abbrechen`,
+  );
+}
 
 export const SECURITY = html(
   `${b('🛡 Deine Sicherheit')}\n\n` +

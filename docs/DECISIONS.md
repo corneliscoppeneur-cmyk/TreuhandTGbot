@@ -38,3 +38,6 @@ PSBT als Datei (.psbt) und, wenn kurz genug, zusätzlich als Base64-Text. Import
 
 ## D11 – Handelsbedingungen unveränderlich
 Keine Bearbeitung nach Erstellung; bei Änderungswunsch abbrechen und neu anlegen. Einfach und manipulationssicher.
+
+## D13 – Mainnet live ohne Limit (2026-10-18)
+Betreiber-Entscheidung: Mainnet ohne Betragslimit, obwohl externes Audit und Rechtsprüfung (`docs/LEGAL-CHECKLIST.md`, `docs/MAINNET-CHECKLIST.md`) noch offen sind. Risiko wurde vorher benannt. Eigene D1-Datenbank `escrow-mainnet`; Signet-Testdaten bleiben in `escrow`. Neuer Schlichter-Schlüssel `0e7e25b4` (m/48'/0'/0'/2', neue Seed) und Gebührenadresse `bc1q4ymd…lure` (Sparrow „Betreiber-Gebuehren“). Texte, Anleitungsbilder und Beispiele sind netzwerkabhängig (kein Signet/tpub auf Mainnet).

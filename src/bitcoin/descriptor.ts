@@ -46,7 +46,9 @@ export function parseSignerKey(input: string, net: NetworkParams): SignerKey {
   const text = input.trim().replace(/\s+/g, '');
   const m = /^\[([0-9a-fA-F]{8})((?:\/[0-9]+['hH]?)+)\]([1-9A-HJ-NP-Za-km-z]{100,120})(\/[0-9*/]*)?$/.exec(text);
   if (!m) {
-    throw new KeyError('Format: [fingerprint/48h/' + net.coinType + 'h/0h/2h]tpub... (Key-Origin + erweiterter öffentlicher Schlüssel)');
+    throw new KeyError(
+      `Format: [fingerprint/48h/${net.coinType}h/0h/2h]${net.name === 'signet' ? 'tpub' : 'xpub'}… (Key-Origin + erweiterter öffentlicher Schlüssel)`,
+    );
   }
   const fingerprint = m[1]!.toLowerCase();
   const path = parsePath(m[2]!);

@@ -46,7 +46,7 @@ import { logError } from '../security/redaction.ts';
 import { clearFlow, getFlow, setFlow, type Flow } from './conversation.ts';
 import { b, code, esc, explorerAddressUrl, i, link, quote, time } from './format.ts';
 import { mainMenu, supportMenu, tradeButtons } from './keyboards.ts';
-import { feesHtml, feesText, HELP, html, MAIN_MENU, privacyText, SECURITY, termsView, tradeView } from './messages.ts';
+import { feesHtml, feesText, helpText, html, mainMenuText, privacyText, SECURITY, termsView, tradeView } from './messages.ts';
 
 /** Buttons that open the picture guides (albums). */
 const GUIDE_BUTTONS: Button[][] = [
@@ -261,7 +261,7 @@ export function createBot(svc: ServiceCtx): Bot {
 
   async function showMenu(ctx: Context) {
     const admin = ctx.from && svc.cfg.adminIds.has(ctx.from.id);
-    await reply(ctx, MAIN_MENU, admin ? [...mainMenu(), [{ text: '🛎 Admin', data: 'a:home', style: 'primary' }]] : mainMenu());
+    await reply(ctx, mainMenuText(svc.cfg), admin ? [...mainMenu(), [{ text: '🛎 Admin', data: 'a:home', style: 'primary' }]] : mainMenu());
   }
 
   /** Sends a picture guide as one swipeable album, with a text version as fallback. */
@@ -416,7 +416,7 @@ export function createBot(svc: ServiceCtx): Bot {
       await showMenu(ctx);
     }),
   );
-  bot.command('help', (ctx) => reply(ctx, HELP, [...HELP_BUTTONS, ...GUIDE_BUTTONS, nav()]));
+  bot.command('help', (ctx) => reply(ctx, helpText(svc.cfg), [...HELP_BUTTONS, ...GUIDE_BUTTONS, nav()]));
   bot.command('privacy', (ctx) => reply(ctx, privacyText(svc.cfg), [nav()]));
   bot.command('fees', (ctx) => reply(ctx, feesText(svc.cfg), [nav()]));
   bot.command('support', (ctx) => reply(ctx, html(b('🛟 Support')), [...supportMenu(svc.cfg), nav()]));
@@ -497,7 +497,7 @@ export function createBot(svc: ServiceCtx): Bot {
           case 'fees':
             return void (await reply(ctx, feesText(svc.cfg), [nav()]));
           case 'help':
-            return void (await reply(ctx, HELP, [...HELP_BUTTONS, ...GUIDE_BUTTONS, nav()]));
+            return void (await reply(ctx, helpText(svc.cfg), [...HELP_BUTTONS, ...GUIDE_BUTTONS, nav()]));
           case 'support':
             return void (await reply(ctx, html(b('🛟 Support')), [...supportMenu(svc.cfg), nav()]));
           case 'security':
@@ -623,13 +623,13 @@ export function createBot(svc: ServiceCtx): Bot {
               `${b('So findest du ihn in Sparrow:')}\n` +
               `Neue Multisig-Wallet anlegen (siehe „Wallet einrichten“). Im Keystore stehen ${i('Master fingerprint')}, ${i('Derivation')} und ${i('xpub')}. ` +
               'Schick sie mir in dieser Form in einer Nachricht:\n' +
-              `${code(`[fingerprint/48h/${svc.net.coinType}h/0h/2h]tpub…`)}\n` +
-              `Beispiel: ${code('[a1b2c3d4/48h/1h/0h/2h]tpubDF…')}\n\n` +
+              `${code(`[fingerprint/48h/${svc.net.coinType}h/0h/2h]${svc.net.name === 'signet' ? 'tpub' : 'xpub'}…`)}\n` +
+              `Beispiel: ${code(`[a1b2c3d4/48h/${svc.net.coinType}h/0h/2h]${svc.net.name === 'signet' ? 'tpub' : 'xpub'}DF…`)}\n\n` +
               quote(
                 `${b('Niemals')} die Wiederherstellungswörter senden und nie etwas, das mit „tprv“ beginnt. Nutze für jeden Handel ein neues Wallet-Konto.`,
               ),
           ),
-          forceReply: { placeholder: '[fingerprint/48h/1h/0h/2h]tpub…' },
+          forceReply: { placeholder: `[fingerprint/48h/${svc.net.coinType}h/0h/2h]${svc.net.name === 'signet' ? 'tpub' : 'xpub'}…` },
         }));
       }
       case 'verify':
@@ -956,7 +956,7 @@ export function createBot(svc: ServiceCtx): Bot {
     }),
   );
 
-  bot.on('message', (ctx) => reply(ctx, MAIN_MENU, mainMenu()));
+  bot.on('message', (ctx) => reply(ctx, mainMenuText(svc.cfg), mainMenu()));
 
   return bot;
 }
