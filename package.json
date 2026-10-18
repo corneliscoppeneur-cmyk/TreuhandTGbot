@@ -23,7 +23,8 @@
     "validate-config": "node --experimental-strip-types scripts/validate-config.ts",
     "set-webhook": "node --experimental-strip-types scripts/set-telegram-webhook.ts",
     "verify-signet": "node --experimental-strip-types scripts/verify-signet.ts",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run build"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run build",
+    "e2e": "node --experimental-strip-types scripts/signet-e2e.ts"
   },
   "dependencies": {
     "@noble/curves": "2.4.0",

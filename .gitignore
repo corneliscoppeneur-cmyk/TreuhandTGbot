@@ -13,3 +13,4 @@ coverage/
 token infos.txt
 treuhand vorhaben.txt
 .deploy.secrets
+.e2e/

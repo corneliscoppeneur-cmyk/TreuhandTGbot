@@ -46,8 +46,11 @@ export class TestDb implements Db {
   /** Set to simulate a D1 outage. */
   failing = false;
   queries = 0;
-  constructor() {
-    this.raw = new DatabaseSync(':memory:');
+  /** In-memory by default; a file path keeps state between runs (live Signet test). */
+  constructor(path = ':memory:') {
+    this.raw = new DatabaseSync(path);
+    const exists = this.raw.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'trades'`).get();
+    if (exists) return;
     const dir = join(import.meta.dirname, '../../migrations');
     for (const f of readdirSync(dir)
       .filter((n) => n.endsWith('.sql'))
