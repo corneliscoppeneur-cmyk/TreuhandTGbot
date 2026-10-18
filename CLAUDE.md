@@ -12,7 +12,8 @@ Nichtverwahrender BTC-Treuhand-Bot (Telegram, Cloudflare Workers + D1, Signet). 
 
 ## Live-ToDos
 - [ ] NACH erfolgreichem Signet-Test: Bot-Token bei BotFather `/revoke`, neues Token per `wrangler secret put TELEGRAM_BOT_TOKEN` + `npm run set-webhook`; danach `token infos.txt` löschen (nur nach Freigabe)
-- [ ] Cloudflare: `wrangler login`, `d1 create`, `database_id` + `COMMISSION_ADDRESS` + `TELEGRAM_BOT_USERNAME` in `wrangler.jsonc`, Secrets, Deploy, `set-webhook`
+- [x] Cloudflare: D1, Secrets, Deploy, Webhook (2026-10-18) – https://btc-telegram-escrow.cornelis-coppeneur.workers.dev
+- [x] Betreiber-Modus aktiv: Schlichter-Key cf1d1361 (Sparrow „Betreiber-Schlichter“), Gebührenadresse tb1qpk4z…e300 (Sparrow „Betreiber-Gebuehren“), 3 % Gebühr
 - [ ] Signet-Ende-zu-Ende nach `docs/SIGNET-RUNBOOK.md` (Release, Refund, Schlichtung) mit Faucet-Coins
 - [ ] Wallet-Test (Sparrow zuerst) → `docs/WALLET-COMPATIBILITY.md` ausfüllen; ggf. `PSBT_GLOBAL_XPUB` ergänzen
 - [ ] Echte Worker-CPU-Zeit in Workers Logs prüfen; bei `exceededCpu` Workers Paid
