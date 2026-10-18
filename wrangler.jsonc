@@ -28,7 +28,7 @@
     "ALLOW_MAINNET": "false",
     "SUPPORT_BOT_URL": "https://t.me/GruppennetzwerkKontakt_bot",
     "CRYPTGEON_URL": "https://cryptgeon.org",
-    "DEFAULT_COMMISSION_BPS": "100",
+    "DEFAULT_COMMISSION_BPS": "300",
     "REFUND_COMMISSION_BPS": "0",
     // Operator's own receive address (signet). PLACEHOLDER (BIP-173 test vector) – replace with your own tb1… address.
     "COMMISSION_ADDRESS": "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx",
@@ -46,7 +46,6 @@
     // Operator mode (automatic arbiter + upfront fee). Fill in after creating the wallets in Sparrow (see docs/OPERATOR-SETUP.md):
     // "OPERATOR_TELEGRAM_ID": "7472753006",
     // "OPERATOR_ARBITER_KEY": "[fingerprint/48h/1h/0h/2h]tpub…",
-    // "COMMISSION_XPUB": "vpub…",
     "DATA_RETENTION_DAYS": "180",
   },
 }

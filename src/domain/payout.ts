@@ -164,7 +164,8 @@ export async function submitPayoutAddress(ctx: ServiceCtx, userId: number, trade
 
   const funding = (await listFunding(ctx.db, tradeId)).filter((f) => f.status === 'confirmed');
   const utxos: FundingUtxo[] = funding.map((f) => ({ txid: f.txid, vout: f.vout, valueSats: BigInt(f.value_sats) }));
-  if (utxos.reduce((s, u) => s + u.valueSats, 0n) !== BigInt(a.trade.amount_sats)) {
+  // escrow holds trade amount + service fee (fee 0 for trades created before the fee was part of the deposit)
+  if (utxos.reduce((s, u) => s + u.valueSats, 0n) !== BigInt(a.trade.amount_sats) + BigInt(a.trade.fee_sats)) {
     throw new UserError('Finanzierungsdaten inkonsistent. Handel wird geprüft.');
   }
 
@@ -183,9 +184,11 @@ export async function submitPayoutAddress(ctx: ServiceCtx, userId: number, trade
       utxos,
       amountSats: amount,
       recipientAddress: address,
-      // fee already paid upfront at deposit → no commission output in the payout
+      // service fee is a separate output to the operator in every payout (release and refund)
       commissionSats:
-        a.trade.fee_sats > 0 ? 0n : commissionSats(amount, kind === 'release' ? a.trade.commission_bps : a.trade.refund_commission_bps),
+        a.trade.fee_sats > 0
+          ? BigInt(a.trade.fee_sats)
+          : commissionSats(amount, kind === 'release' ? a.trade.commission_bps : a.trade.refund_commission_bps),
       commissionAddress: ctx.cfg.commissionAddress,
       feeRateSatVb: feeRate,
       maxFeeRateSatVb: ctx.cfg.maxFeeRateSatVb,

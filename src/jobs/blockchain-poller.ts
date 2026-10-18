@@ -194,28 +194,17 @@ async function pollFunding(ctx: ServiceCtx, t: TradeRow, tip: number, out: Notic
     }
   }
 
-  const ev = evaluateFunding(BigInt(t.amount_sats), utxos, tip, ctx.cfg.minConfirmations);
+  // the buyer pays trade amount + service fee in one payment
+  const expected = BigInt(t.amount_sats) + BigInt(t.fee_sats);
+  const ev = evaluateFunding(expected, utxos, tip, ctx.cfg.minConfirmations);
   const now = ctx.now();
   const s = signerIds(await listParticipants(ctx.db, t.id));
 
   if (ev.verdict === 'overpaid') {
-    out.push(...(await toReview(ctx, t.id, `Überzahlung: ${formatBtc(ev.totalSats)} statt ${formatBtc(BigInt(t.amount_sats))} BTC`)));
+    out.push(...(await toReview(ctx, t.id, `Überzahlung: ${formatBtc(ev.totalSats)} statt ${formatBtc(expected)} BTC`)));
     return INTERVAL.holding;
   }
-  // Upfront fee: must be confirmed on the per-trade fee address before the trade counts as funded.
-  let feeOk = true;
-  if (t.fee_address && t.fee_sats > 0 && !t.fee_paid_at) {
-    const rec = await ctx.chain.getAddressReceived(t.fee_address);
-    if (rec.confirmedSats >= BigInt(t.fee_sats)) {
-      await ctx.db.prepare('UPDATE trades SET fee_paid_at = ? WHERE id = ? AND fee_paid_at IS NULL').bind(now, t.id).run();
-      await auditStmt(ctx.db, { tradeId: t.id, actorId: 0, action: 'fee_received', detail: rec.confirmedSats.toString(), now }).run();
-      out.push(...adminNotices(ctx, `💰 Gebühr für Handel #${t.id} erhalten: ${formatBtc(rec.confirmedSats)} BTC (an ${t.fee_address}).`));
-    } else {
-      feeOk = false;
-    }
-  }
-
-  if (ev.verdict === 'funded' && feeOk) {
+  if (ev.verdict === 'funded') {
     await transition(ctx.db, {
       tradeId: t.id,
       from: t.status,
@@ -248,8 +237,7 @@ Ab jetzt kann es nur noch mit 2 von 3 Unterschriften bewegt werden.`,
     );
     return INTERVAL.holding;
   }
-  const feeMissing = ev.verdict === 'funded' && !feeOk;
-  if ((ev.verdict === 'pending' || ev.verdict === 'partial' || feeMissing) && t.status === 'READY_TO_FUND') {
+  if ((ev.verdict === 'pending' || ev.verdict === 'partial') && t.status === 'READY_TO_FUND') {
     await transition(ctx.db, {
       tradeId: t.id,
       from: 'READY_TO_FUND',
@@ -262,10 +250,9 @@ Ab jetzt kann es nur noch mit 2 von 3 Unterschriften bewegt werden.`,
     if (s.buyer) {
       out.push({
         chatId: s.buyer,
-        text: feeMissing
-          ? `⏳ Handel #${t.id}: Der Handelsbetrag ist im Treuhand-Konto angekommen. Es fehlt noch die Servicegebühr (${formatBtc(BigInt(t.fee_sats))} BTC an ${t.fee_address}). Der Handel startet, sobald sie bestätigt ist.`
-          : ev.verdict === 'partial'
-            ? `⏳ Handel #${t.id}: Teilzahlung erkannt – ${formatBtc(ev.totalSats)} von ${formatBtc(BigInt(t.amount_sats))} BTC. Bitte den Rest (${formatBtc(BigInt(t.amount_sats) - ev.totalSats)} BTC) an dieselbe Adresse senden.`
+        text:
+          ev.verdict === 'partial'
+            ? `⏳ Handel #${t.id}: Teilzahlung erkannt – ${formatBtc(ev.totalSats)} von ${formatBtc(expected)} BTC. Bitte den Rest (${formatBtc(expected - ev.totalSats)} BTC) an dieselbe Adresse senden.`
             : `⏳ Handel #${t.id}: Deine Zahlung ist unterwegs. Sobald das Bitcoin-Netzwerk sie bestätigt hat (meist 10–30 Minuten), melde ich mich.`,
       });
     }
@@ -346,7 +333,20 @@ async function pollHolding(ctx: ServiceCtx, t: TradeRow, out: Notice[]): Promise
       .prepare(`UPDATE funding_outputs SET status = 'spent', spent_txid = ?, updated_at = ? WHERE id = ?`)
       .bind(os.spendingTxid, now, k.id)
       .run();
-    out.push(...(await toReview(ctx, t.id, 'Treuhand-UTXO wurde außerhalb des Bots ausgegeben (z. B. gemeinsame Signatur ohne Bot)')));
+    // Payout around the bot (buyer + seller co-signed without it, skipping the service fee): block both.
+    const parts = await listParticipants(ctx.db, t.id);
+    const parties = parts.filter((x) => x.role === 'buyer' || x.role === 'seller').map((x) => x.telegram_user_id);
+    await ctx.db.batch([
+      ...parties.map((id) => ctx.db.prepare('UPDATE users SET is_blocked = 1 WHERE telegram_user_id = ?').bind(id)),
+      auditStmt(ctx.db, { tradeId: t.id, actorId: 0, action: 'fee_bypass_blocked', detail: parties.join(','), now }),
+    ]);
+    out.push(
+      ...(await toReview(
+        ctx,
+        t.id,
+        'Treuhand-Geld wurde am Bot vorbei ausgezahlt (Servicegebühr umgangen). Käufer und Verkäufer wurden gesperrt.',
+      )),
+    );
     return INTERVAL.holding;
   }
   if (utxos.length > known.length) {

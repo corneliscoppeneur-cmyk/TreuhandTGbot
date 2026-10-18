@@ -15,8 +15,11 @@ BIP-67-Sortierung → Ergebnis unabhängig von der Registrierungsreihenfolge; je
 ## D4 – Funding-Policy
 Summe aller UTXOs der (pro Handel eindeutigen) Adresse: `<` Betrag → warten; `=` Betrag und alle ≥ N Bestätigungen → FUNDED; `>` Betrag → NEEDS_REVIEW. 0-conf nie final. Keine automatische Rückerstattung von Überzahlungen.
 
-## D5 – Gebührenpolicy v1
-Provision in Basispunkten vom vereinbarten Betrag, eigener Output; Release: `DEFAULT_COMMISSION_BPS`, Refund: `REFUND_COMMISSION_BPS` (Standard 0); Streitfall folgt dem Ergebnis. Minerfee trägt der Empfänger. Grenze: `MAX_FEE_RATE_SAT_VB` und `MAX_FEE_PERCENT`. Provision unter Dust entfällt. Änderung = neue Session.
+## D5 – Gebührenpolicy (v3)
+Der Käufer zahlt **eine Summe an eine Adresse**: Handelsbetrag + Servicegebühr (bps vom Betrag, mindestens 546 sat) ins Treuhand-Konto. Jede Auszahlung (Release und Refund) enthält die Gebühr als eigenen Output an `COMMISSION_ADDRESS`; nicht erstattbar. Minerfee trägt der Empfänger. Grenzen: `MAX_FEE_RATE_SAT_VB`, `MAX_FEE_PERCENT`. Restrisiko: Käufer + Verkäufer (2 von 3) können gemeinsam am Bot vorbei auszahlen → der Poller erkennt das, sperrt beide und meldet es dem Betreiber. Eine getrennte Vorab-Gebühr an eine zweite Adresse wurde verworfen (Kundenwunsch: nur eine Zahlung). Die DB-Spalten `fee_index`, `fee_address`, `fee_paid_at` aus Migration 0003 sind dadurch ungenutzt (SQLite entfernt Spalten nicht sauber).
+
+## D12 – Betreiber-Modus
+`OPERATOR_TELEGRAM_ID` + `OPERATOR_ARBITER_KEY`: der Betreiber ist automatisch Schlichter jedes Handels. Zustimmung, Schlüssel (öffentlich) und Adressprüfung erledigt der Bot; der Betreiber signiert nur nach Streitfall-Entscheidungen mit eigener Wallet. Sein Schlüssel wird in allen Handeln wiederverwendet (Ausnahme von der xpub-Einmaligkeit).
 
 ## D6 – Mainnet-Sperre mit zwei Schaltern
 `BITCOIN_NETWORK=mainnet` allein startet nicht. Zusätzlich `ALLOW_MAINNET=true` **und** `MAINNET_RELEASE_CONFIRMATION` mit fester Phrase (siehe MAINNET-CHECKLIST.md).

@@ -36,7 +36,7 @@ describe('funding policy', () => {
   it('unconfirmed funding is never final', async () => {
     const h = new Harness();
     const { tradeId, address } = await readyToFund(h);
-    h.chain.pay(address, 'c1'.repeat(32), 1_000_000n);
+    h.chain.pay(address, 'c1'.repeat(32), 1_010_000n);
     for (let i = 0; i < 3; i++) await h.cron();
     expect((await h.trade(tradeId)).status).toBe('FUNDING_SEEN');
   });
@@ -50,7 +50,7 @@ describe('funding policy', () => {
     await h.cron();
     expect((await h.trade(tradeId)).status).toBe('FUNDING_SEEN');
     expect(h.last(BUYER).text).toMatch(/Teilzahlung/);
-    h.chain.pay(address, 'c2'.repeat(32), 600_000n);
+    h.chain.pay(address, 'c2'.repeat(32), 610_000n);
     h.chain.tip = 1002;
     h.chain.confirmAll(address, 1002);
     await h.cron();
@@ -69,7 +69,7 @@ describe('funding policy', () => {
   it('a vanished unconfirmed payment returns to READY_TO_FUND', async () => {
     const h = new Harness();
     const { tradeId, address } = await readyToFund(h);
-    h.chain.pay(address, 'c1'.repeat(32), 1_000_000n);
+    h.chain.pay(address, 'c1'.repeat(32), 1_010_000n);
     await h.cron();
     expect((await h.trade(tradeId)).status).toBe('FUNDING_SEEN');
     h.chain.utxos.set(address, []);
@@ -113,7 +113,13 @@ describe('chain anomalies after funding', () => {
     await h.cron(3600);
     const t = await h.trade(tradeId);
     expect(t.status).toBe('NEEDS_REVIEW');
-    expect(String(t.review_reason)).toMatch(/außerhalb/);
+    expect(String(t.review_reason)).toMatch(/am Bot vorbei/);
+    // bypassing the bot (and its service fee) blocks buyer and seller
+    const blocked = h.db.raw.prepare('SELECT telegram_user_id FROM users WHERE is_blocked = 1 ORDER BY telegram_user_id').all();
+    expect(blocked).toEqual([{ telegram_user_id: BUYER }, { telegram_user_id: SELLER }]);
+    const before = h.sent.length;
+    await h.text(BUYER, '/start');
+    expect(h.sent.length).toBe(before);
   });
 
   it('our exact transaction broadcast by a signer wallet is followed to COMPLETE', async () => {
@@ -136,7 +142,7 @@ describe('chain anomalies after funding', () => {
   it('blockchain API outage: no state change, backoff recorded', async () => {
     const h = new Harness();
     const { tradeId, address } = await readyToFund(h);
-    h.chain.pay(address, 'c1'.repeat(32), 1_000_000n);
+    h.chain.pay(address, 'c1'.repeat(32), 1_010_000n);
     h.chain.failing = true;
     await h.cron();
     expect((await h.trade(tradeId)).status).toBe('READY_TO_FUND');
@@ -278,7 +284,7 @@ describe('Esplora provider', () => {
   it('provider disagreement during polling moves the trade to NEEDS_REVIEW', async () => {
     const h = new Harness();
     const { tradeId, address } = await readyToFund(h);
-    h.chain.pay(address, 'c1'.repeat(32), 1_000_000n);
+    h.chain.pay(address, 'c1'.repeat(32), 1_010_000n);
     h.chain.getAddressUtxos = async () => {
       throw new ProviderError('disagreement', 'providers disagree');
     };

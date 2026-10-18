@@ -67,12 +67,6 @@ export class FakeChain implements BlockchainProvider {
     this.check();
     return this.utxos.get(address) ?? [];
   }
-  /** address → confirmed / mempool sums received (fee payments in tests) */
-  received = new Map<string, { confirmedSats: bigint; mempoolSats: bigint }>();
-  async getAddressReceived(address: string) {
-    this.check();
-    return this.received.get(address) ?? { confirmedSats: 0n, mempoolSats: 0n };
-  }
   async getTxStatus(txid: string) {
     this.check();
     return this.txStatus.get(txid) ?? null;

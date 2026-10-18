@@ -19,9 +19,13 @@ export function operatorKey(ctx: ServiceCtx): SignerKey {
   return parseSignerKey(ctx.cfg.operatorArbiterKey!, ctx.net);
 }
 
-/** Upfront fee for a trade amount: percentage of the amount, at least the dust limit (0 if fees are off). */
-export function upfrontFeeSats(ctx: ServiceCtx, amountSats: bigint): bigint {
-  if (!ctx.cfg.commissionXpub || ctx.cfg.commissionBps === 0) return 0n;
+/**
+ * Service fee for a trade: percentage of the amount, at least the dust limit (0 if fees are off).
+ * The buyer pays amount + fee in ONE payment into the escrow; every payout (release or refund)
+ * sends the fee as its own output to COMMISSION_ADDRESS.
+ */
+export function serviceFeeSats(ctx: ServiceCtx, amountSats: bigint): bigint {
+  if (ctx.cfg.commissionBps === 0) return 0n;
   const fee = (amountSats * BigInt(ctx.cfg.commissionBps)) / 10_000n;
   return fee < DUST_LIMIT_SATS ? DUST_LIMIT_SATS : fee;
 }

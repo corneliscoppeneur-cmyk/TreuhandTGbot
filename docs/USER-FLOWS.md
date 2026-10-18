@@ -26,6 +26,9 @@ Abbruch nur bis `READY_TO_FUND` ohne erkannte Einzahlung.
 | Streitfall eröffnen | ✓ | ✓ | – | – | – | – |
 | Streitfall entscheiden | – | – | ✓ | – | – | – |
 
+## Gebühr und Einzahlung
+Der Käufer zahlt eine Summe (Handelsbetrag + Servicegebühr) an eine Adresse. Die Gebühr geht bei jeder Auszahlung als eigener Posten an den Betreiber. Umgehung am Bot vorbei → beide Parteien gesperrt.
+
 ## Einladung
 Ersteller erhält Link `t.me/<bot>?start=i_<token>` und separaten 8-stelligen Code. Empfänger öffnet Link (bindet die Einladung an sein Konto), gibt Code ein. Gültig 72 h, einmalig, 5 Fehlversuche → Sperre.
 

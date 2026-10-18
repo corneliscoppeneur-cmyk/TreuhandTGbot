@@ -1,4 +1,4 @@
-import type { AddressReceived, BlockchainProvider, ChainUtxo, Outspend, TxStatus } from './provider.ts';
+import type { BlockchainProvider, ChainUtxo, Outspend, TxStatus } from './provider.ts';
 import { ProviderError } from './provider.ts';
 
 function utxoKey(u: ChainUtxo): string {
@@ -41,14 +41,6 @@ export class CrossCheckedProvider implements BlockchainProvider {
         .sort()
         .join('|');
     if (conf(a) !== conf(b)) throw new ProviderError('disagreement', 'providers disagree on confirmed UTXOs');
-    return a;
-  }
-
-  async getAddressReceived(address: string): Promise<AddressReceived> {
-    const a = await this.primary.getAddressReceived(address);
-    if (!this.secondary || a.confirmedSats === 0n) return a;
-    const b = await this.secondary.getAddressReceived(address);
-    if (b.confirmedSats !== a.confirmedSats) throw new ProviderError('disagreement', 'providers disagree on received amount');
     return a;
   }
 

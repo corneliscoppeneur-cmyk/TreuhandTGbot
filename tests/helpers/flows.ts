@@ -51,7 +51,7 @@ export async function setupFundedTrade(h: Harness): Promise<{ tradeId: string; a
   expect((await h.trade(tradeId)).status).toBe('READY_TO_FUND');
   expect(h.last(BUYER).text).toContain(address);
 
-  h.chain.pay(address, 'cc'.repeat(32), 1_000_000n);
+  h.chain.pay(address, 'cc'.repeat(32), 1_010_000n);
   await h.cron();
   expect((await h.trade(tradeId)).status).toBe('FUNDING_SEEN');
   h.chain.tip = 1001;

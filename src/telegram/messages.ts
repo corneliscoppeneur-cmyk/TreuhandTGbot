@@ -68,31 +68,18 @@ export function privacyText(cfg: AppConfig): MessageContent {
 
 export function feesHtml(cfg: AppConfig): string {
   const example = 1_000_000n; // 0,01 BTC
-  const fee = (example * BigInt(cfg.commissionBps)) / 10_000n;
-  if (cfg.commissionXpub) {
-    return (
-      `${b('💸 Was kostet das?')}\n\n` +
-      `• ${b('Servicegebühr:')} ${b(formatBps(cfg.commissionBps))} vom Handelsbetrag (mindestens 546 sat). Der Käufer zahlt sie ${b('bei der Einzahlung')} direkt an den Betreiber.\n` +
-      '• Die Servicegebühr wird nicht erstattet – auch nicht bei einer Rückzahlung.\n' +
-      `• ${b('Netzwerkgebühr:')} kleine Gebühr an das Bitcoin-Netzwerk. Bei der Einzahlung zahlt sie der Käufer, bei der Auszahlung der Empfänger.\n\n` +
-      `${b('Beispiel')} bei ${esc(formatBtc(example))} BTC: Der Käufer überweist ${esc(formatBtc(example))} BTC ins Treuhand-Konto und ${esc(formatBtc(fee))} BTC Servicegebühr. ` +
-      `Der Verkäufer erhält später ca. ${esc(formatBtc(example - 300n))} BTC (abzüglich Netzwerkgebühr).\n\n` +
-      `🛡 ${i(`Schutz vor Abzocke: Ist die Netzwerkgebühr gerade über ${cfg.maxFeeRateSatVb} sat/vB oder über ${cfg.maxFeePercent} % des Betrags, wird keine Auszahlung erstellt – einfach später erneut versuchen.`)}`
-    );
-  }
+  const raw = (example * BigInt(cfg.commissionBps)) / 10_000n;
+  const fee = cfg.commissionBps === 0 ? 0n : raw < 546n ? 546n : raw;
   return (
     `${b('💸 Was kostet das?')}\n\n` +
-    `• ${b('Servicegebühr:')} ${b(formatBps(cfg.commissionBps))} vom Handelsbetrag, nur wenn der Verkäufer ausgezahlt wird.\n` +
-    `• ${b('Bei Rückzahlung an den Käufer:')} ${b(formatBps(cfg.refundCommissionBps))} Servicegebühr.\n` +
-    `• ${b('Netzwerkgebühr:')} kleine Gebühr an das Bitcoin-Netzwerk, zahlt der Empfänger der Auszahlung. Höhe hängt von der aktuellen Auslastung ab.\n` +
-    '• Bei Streit gilt die Regel des Ergebnisses (Auszahlung oder Rückzahlung).\n\n' +
-    `${b('Beispiel')} bei ${esc(formatBtc(example))} BTC und Auszahlung an den Verkäufer:\n` +
-    `Servicegebühr ${esc(formatBtc(fee))} BTC · Netzwerkgebühr ca. 0,00000300 BTC · Verkäufer erhält ca. ${esc(formatBtc(example - fee - 300n))} BTC\n\n` +
+    `• ${b('Servicegebühr:')} ${b(formatBps(cfg.commissionBps))} vom Handelsbetrag (mindestens 546 sat). Sie ist in der Einzahlung enthalten – der Käufer zahlt ${b('eine Summe an eine Adresse')}.\n` +
+    '• Die Servicegebühr geht bei jeder Auszahlung automatisch an den Betreiber – auch bei einer Rückzahlung an den Käufer. Sie wird nicht erstattet.\n' +
+    `• ${b('Netzwerkgebühr:')} kleine Gebühr an das Bitcoin-Netzwerk. Bei der Einzahlung zahlt sie der Käufer, bei der Auszahlung der Empfänger.\n\n` +
+    `${b('Beispiel')} bei einem Handel über ${esc(formatBtc(example))} BTC:\n` +
+    `Der Käufer zahlt ${b(`${esc(formatBtc(example + fee))} BTC`)} ein (${esc(formatBtc(example))} Handel + ${esc(formatBtc(fee))} Gebühr). ` +
+    `Der Verkäufer erhält ca. ${esc(formatBtc(example - 300n))} BTC (Handelsbetrag minus Netzwerkgebühr).\n\n` +
     `🛡 ${i(`Schutz vor Abzocke: Ist die Netzwerkgebühr gerade über ${cfg.maxFeeRateSatVb} sat/vB oder über ${cfg.maxFeePercent} % des Betrags, wird keine Auszahlung erstellt – einfach später erneut versuchen.`)}\n\n` +
-    quote(
-      'Ehrlich gesagt: Die Servicegebühr ist technisch nicht erzwingbar. Käufer und Verkäufer könnten gemeinsam auch ohne den Bot auszahlen. ' +
-        'Das ist der Preis dafür, dass der Bot nie Zugriff auf euer Geld hat.',
-    )
+    quote('Fair Play: Wer das Treuhand-Geld am Bot vorbei auszahlt, um die Gebühr zu umgehen, wird automatisch gesperrt.')
   );
 }
 

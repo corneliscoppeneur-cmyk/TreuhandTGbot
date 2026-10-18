@@ -1,31 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Transaction } from '@scure/btc-signer';
 import { base64 } from '@scure/base';
-import { HDKey } from '@scure/bip32';
-import { sha256 } from '@noble/hashes/sha2.js';
-import { utf8ToBytes } from '@noble/hashes/utils.js';
-import { Harness } from '../helpers/harness.ts';
+import { Harness, testEnv } from '../helpers/harness.ts';
 import { BUYER, SELLER, inviteAndJoin } from '../helpers/flows.ts';
 import { signAs, testAddress, wallets } from '../helpers/escrow.ts';
-import { NET, testWallet } from '../helpers/keys.ts';
-import { feeAddress, parseFeeXpub } from '../../src/bitcoin/fee-wallet.ts';
+import { testWallet } from '../helpers/keys.ts';
 import { parseConfig, ConfigError } from '../../src/config/env.ts';
-import { testEnv } from '../helpers/harness.ts';
+import { serviceFeeSats } from '../../src/domain/operator.ts';
+import type { ServiceCtx } from '../../src/domain/context.ts';
 
 afterEach(() => vi.unstubAllGlobals());
 
 const OPERATOR = 9000;
 const operatorWallet = testWallet('operator');
-/** TEST-ONLY BIP-84 fee wallet of the operator. */
-const feeRoot = HDKey.fromMasterSeed(sha256(utf8ToBytes('TEST-ONLY-fee-wallet')), { public: 0x043587cf, private: 0x04358394 });
-const FEE_XPUB = feeRoot.derive("m/84'/1'/0'").publicExtendedKey;
+const COMMISSION = testAddress('operator'); // = COMMISSION_ADDRESS of the test env
 
 function opHarness(): Harness {
-  return new Harness({
-    OPERATOR_TELEGRAM_ID: String(OPERATOR),
-    OPERATOR_ARBITER_KEY: operatorWallet.keyExpression,
-    COMMISSION_XPUB: FEE_XPUB,
-  });
+  return new Harness({ OPERATOR_TELEGRAM_ID: String(OPERATOR), OPERATOR_ARBITER_KEY: operatorWallet.keyExpression });
 }
 
 function signAsOperator(psbt: string): string {
@@ -61,37 +52,33 @@ async function readyToFund(h: Harness, account = 0) {
     await h.text(id, account === 0 ? wallets[role].keyExpression : testWallet(role, account).keyExpression);
   }
   for (const id of [BUYER, SELLER]) await h.click(id, h.button(id, /:verify:/));
-  const t = await h.trade(tradeId);
-  expect(t.status).toBe('READY_TO_FUND');
+  expect((await h.trade(tradeId)).status).toBe('READY_TO_FUND');
   const escrow = (h.db.raw.prepare('SELECT address FROM multisig_configs WHERE trade_id = ?').get(tradeId) as { address: string }).address;
-  return { tradeId, escrow, feeAddr: String(t.fee_address), feeSats: BigInt(Number(t.fee_sats)) };
+  return { tradeId, escrow };
 }
 
-async function fund(h: Harness, escrow: string, feeAddr: string, feeSats: bigint) {
-  h.chain.pay(escrow, 'c1'.repeat(32), 1_000_000n);
+/** One payment: trade amount 0,01 BTC + 1 % service fee. */
+const TOTAL = 1_010_000n;
+
+async function fund(h: Harness, escrow: string, value = TOTAL) {
+  h.chain.pay(escrow, 'c1'.repeat(32), value);
   h.chain.tip = 1001;
   h.chain.confirmAll(escrow, 1001);
-  h.chain.received.set(feeAddr, { confirmedSats: feeSats, mempoolSats: 0n });
   await h.cron();
 }
 
-describe('operator mode configuration', () => {
-  it('requires operator id and key together and a valid fee xpub', async () => {
-    const raw = testEnv() as unknown as Record<string, unknown>;
-    expect(() => parseConfig({ ...raw, OPERATOR_TELEGRAM_ID: '1' })).toThrow(ConfigError);
+describe('service fee', () => {
+  const ctx = (bps: string) =>
+    ({ cfg: parseConfig({ ...(testEnv() as unknown as Record<string, unknown>), DEFAULT_COMMISSION_BPS: bps }) }) as ServiceCtx;
+  it('is a percentage of the amount, at least the dust limit, 0 when disabled', () => {
+    expect(serviceFeeSats(ctx('100'), 1_000_000n)).toBe(10_000n);
+    expect(serviceFeeSats(ctx('100'), 20_000n)).toBe(546n);
+    expect(serviceFeeSats(ctx('0'), 1_000_000n)).toBe(0n);
+  });
+  it('operator id and key must be set together', async () => {
+    expect(() => parseConfig({ ...(testEnv() as unknown as Record<string, unknown>), OPERATOR_TELEGRAM_ID: '1' })).toThrow(ConfigError);
     const h = new Harness({ OPERATOR_TELEGRAM_ID: '1', OPERATOR_ARBITER_KEY: 'nonsense' });
     expect((await h.text(BUYER, '/start')).status).toBe(503);
-    const h2 = new Harness({ COMMISSION_XPUB: 'xpubnonsense' });
-    expect((await h2.text(BUYER, '/start')).status).toBe(503);
-  });
-
-  it('fee addresses are deterministic, valid and different per trade', () => {
-    const x = parseFeeXpub(FEE_XPUB, NET);
-    const a0 = feeAddress(x, NET, 0);
-    const a1 = feeAddress(x, NET, 1);
-    expect(a0).toMatch(/^tb1q[0-9a-z]{38}$/);
-    expect(a0).not.toBe(a1);
-    expect(feeAddress(x, NET, 0)).toBe(a0);
   });
 });
 
@@ -116,49 +103,48 @@ describe('operator is the automatic arbiter', () => {
     expect(h.last(OPERATOR).text).toMatch(/automatisch Schlichter/);
   });
 
-  it('routine steps run without the operator; deposit asks for two payments', async () => {
+  it('routine steps run without the operator; deposit is ONE address and ONE sum', async () => {
     const h = opHarness();
     const before = h.sent.length;
-    const { feeAddr, feeSats, escrow } = await readyToFund(h);
-    const opMsgs = h.to(OPERATOR, before);
-    // operator only receives admin notices, no routine requests
-    expect(opMsgs.every((m) => m.text.startsWith('🛎 Admin'))).toBe(true);
-    expect(feeSats).toBe(10_000n);
-    expect(feeAddr).toBe(feeAddress(parseFeeXpub(FEE_XPUB, NET), NET, 0));
+    const { escrow, tradeId } = await readyToFund(h);
+    expect(h.to(OPERATOR, before).every((m) => m.text.startsWith('🛎 Admin'))).toBe(true);
+    expect(Number((await h.trade(tradeId)).fee_sats)).toBe(10_000);
     const dep = h.to(BUYER).find((m) => m.text.includes('Bereit zur Einzahlung'))!;
     expect(dep.text).toContain(escrow);
-    expect(dep.text).toContain(feeAddr);
-    expect(dep.buttons.find((b) => b.copy === '0.00010000')).toBeDefined();
+    expect(dep.text).toContain('0,01010000 BTC');
+    expect(dep.text).not.toContain(COMMISSION);
+    expect(dep.buttons.filter((b) => b.copy).map((b) => b.copy)).toEqual([escrow, '0.01010000']);
   });
 
-  it('the trade is only funded when the fee is confirmed too', async () => {
+  it('funded only when amount + fee arrived; the amount alone is a partial payment', async () => {
     const h = opHarness();
-    const { tradeId, escrow, feeAddr, feeSats } = await readyToFund(h);
-    h.chain.pay(escrow, 'c1'.repeat(32), 1_000_000n);
-    h.chain.tip = 1001;
-    h.chain.confirmAll(escrow, 1001);
-    await h.cron();
+    const { tradeId, escrow } = await readyToFund(h);
+    await fund(h, escrow, 1_000_000n);
     expect((await h.trade(tradeId)).status).toBe('FUNDING_SEEN');
-    expect(h.last(BUYER).text).toMatch(/fehlt noch die Servicegebühr/);
-    h.chain.received.set(feeAddr, { confirmedSats: feeSats - 1n, mempoolSats: 0n });
-    await h.cron();
-    expect((await h.trade(tradeId)).status).toBe('FUNDING_SEEN');
-    h.chain.received.set(feeAddr, { confirmedSats: feeSats, mempoolSats: 0n });
+    expect(h.last(BUYER).text).toMatch(/Teilzahlung/);
+    h.chain.pay(escrow, 'c2'.repeat(32), 10_000n);
+    h.chain.tip = 1002;
+    h.chain.confirmAll(escrow, 1002);
     await h.cron();
     expect((await h.trade(tradeId)).status).toBe('FUNDED');
-    expect(h.to(OPERATOR).some((m) => m.text.includes('Gebühr für Handel'))).toBe(true);
   });
 
-  it('release: no commission output (fee already paid); buyer + seller sign; operator not bothered', async () => {
+  it('release: the fee goes to the operator as its own output; buyer + seller sign; operator not bothered', async () => {
     const h = opHarness();
-    const { tradeId, escrow, feeAddr, feeSats } = await readyToFund(h);
-    await fund(h, escrow, feeAddr, feeSats);
+    const { tradeId, escrow } = await readyToFund(h);
+    await fund(h, escrow);
     const opBefore = h.to(OPERATOR).length;
     await h.click(BUYER, `t:${tradeId}:release`);
     await h.click(SELLER, `t:${tradeId}:addr`);
     await h.text(SELLER, testAddress('seller-payout'));
-    const s = h.db.raw.prepare('SELECT outputs_json FROM psbt_sessions WHERE trade_id = ?').get(tradeId) as { outputs_json: string };
-    expect(JSON.parse(s.outputs_json)).toHaveLength(1);
+    const s = h.db.raw.prepare('SELECT outputs_json, miner_fee_sats FROM psbt_sessions WHERE trade_id = ?').get(tradeId) as {
+      outputs_json: string;
+      miner_fee_sats: number;
+    };
+    const outs = JSON.parse(s.outputs_json) as { purpose: string; address: string; valueSats: string }[];
+    expect(outs).toHaveLength(2);
+    expect(outs.find((o) => o.purpose === 'commission')).toMatchObject({ address: COMMISSION, valueSats: '10000' });
+    expect(BigInt(outs.find((o) => o.purpose === 'recipient')!.valueSats)).toBe(1_000_000n - BigInt(s.miner_fee_sats));
     const psbt = h.psbt(BUYER);
     for (const [id, role] of [
       [BUYER, 'buyer'],
@@ -177,10 +163,10 @@ describe('operator is the automatic arbiter', () => {
     ).toBe(true);
   });
 
-  it('dispute → operator decides refund and signs with the buyer', async () => {
+  it('dispute → operator decides refund, fee is kept, operator signs with the buyer', async () => {
     const h = opHarness();
-    const { tradeId, escrow, feeAddr, feeSats } = await readyToFund(h);
-    await fund(h, escrow, feeAddr, feeSats);
+    const { tradeId, escrow } = await readyToFund(h);
+    await fund(h, escrow);
     await h.click(BUYER, `t:${tradeId}:dispute`);
     await h.text(BUYER, 'Rad hat Rahmenbruch');
     await h.text(BUYER, '-');
@@ -190,6 +176,8 @@ describe('operator is the automatic arbiter', () => {
     await h.text(OPERATOR, 'Mangel belegt');
     await h.click(BUYER, `t:${tradeId}:addr`);
     await h.text(BUYER, testAddress('buyer-refund'));
+    const s = h.db.raw.prepare('SELECT outputs_json FROM psbt_sessions WHERE trade_id = ?').get(tradeId) as { outputs_json: string };
+    expect(JSON.parse(s.outputs_json).find((o: { purpose: string }) => o.purpose === 'commission')).toMatchObject({ valueSats: '10000' });
     const psbt = h.psbt(OPERATOR); // operator receives the PSBT after a dispute decision
     await h.click(BUYER, h.button(BUYER, /^s:.*:up$/));
     await h.text(BUYER, signAs(psbt, 'buyer'));
@@ -199,10 +187,22 @@ describe('operator is the automatic arbiter', () => {
     expect((await h.trade(tradeId)).status).toBe('BROADCAST');
   });
 
-  it('each trade gets its own fee address', async () => {
+  it('bypassing the bot blocks buyer and seller and alerts the operator', async () => {
     const h = opHarness();
-    const a = await readyToFund(h);
-    const b = await readyToFund(h, 1);
-    expect(a.feeAddr).not.toBe(b.feeAddr);
+    const { tradeId, escrow } = await readyToFund(h);
+    await fund(h, escrow);
+    h.chain.utxos.set(escrow, []);
+    h.chain.outspends.set(`${'c1'.repeat(32)}:0`, { spent: true, spendingTxid: '77'.repeat(32) });
+    await h.cron(3600);
+    expect((await h.trade(tradeId)).status).toBe('NEEDS_REVIEW');
+    expect(h.db.raw.prepare('SELECT COUNT(*) AS n FROM users WHERE is_blocked = 1').get()).toEqual({ n: 2 });
+    expect(h.to(OPERATOR).some((m) => /am Bot vorbei/.test(m.text))).toBe(true);
+  });
+
+  it('works for several trades in a row (operator key reused, buyer keys fresh)', async () => {
+    const h = opHarness();
+    await readyToFund(h);
+    const second = await readyToFund(h, 1);
+    expect(second.escrow).toMatch(/^tb1q/);
   });
 });

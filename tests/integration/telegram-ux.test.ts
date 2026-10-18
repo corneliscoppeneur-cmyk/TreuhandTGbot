@@ -106,7 +106,7 @@ describe('Telegram UX', () => {
     const deposit = h.to(BUYER).find((m) => m.text.includes('Bereit zur Einzahlung'))!;
     expect(deposit.raw).toContain(`<code>${address}</code>`);
     expect(deposit.buttons.find((b) => b.copy === address)).toBeDefined();
-    expect(deposit.buttons.find((b) => b.copy === '0.01000000')).toBeDefined();
+    expect(deposit.buttons.find((b) => b.copy === '0.01010000')).toBeDefined();
     expect(deposit.buttons.find((b) => b.url === `https://mempool.space/signet/address/${address}`)).toBeDefined();
   });
 

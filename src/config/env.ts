@@ -34,8 +34,7 @@ export interface Env {
   OPERATOR_TELEGRAM_ID?: string;
   /** Operator arbiter key expression [fp/48h/coin h/acct h/2h]tpub… (public, watch-only). */
   OPERATOR_ARBITER_KEY?: string;
-  /** Operator fee wallet: BIP-84 account tpub/vpub (public). One fresh fee address per trade. */
-  COMMISSION_XPUB?: string;
+
   DATA_RETENTION_DAYS: string;
 }
 
@@ -63,8 +62,7 @@ export interface AppConfig {
   /** Telegram id of the operator acting as automatic arbiter, or null (arbiter is invited). */
   operatorId: number | null;
   operatorArbiterKey: string | null;
-  /** Fee wallet xpub: if set, the fee is paid upfront at deposit to a per-trade address (cannot be bypassed). */
-  commissionXpub: string | null;
+
   dataRetentionDays: number;
 }
 
@@ -188,7 +186,6 @@ export function parseConfig(env: Record<string, unknown>): AppConfig {
     adminIds,
     operatorId,
     operatorArbiterKey,
-    commissionXpub: opt(env, 'COMMISSION_XPUB'),
     dataRetentionDays: int(env, 'DATA_RETENTION_DAYS', 30, 3650),
   };
 }

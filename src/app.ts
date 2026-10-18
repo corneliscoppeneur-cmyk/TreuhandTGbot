@@ -1,6 +1,5 @@
 /** Application wiring shared by the Worker entry, tests and scripts. */
 import { parseSignerKey } from './bitcoin/descriptor.ts';
-import { parseFeeXpub } from './bitcoin/fee-wallet.ts';
 import { addressToScript, getNetwork } from './bitcoin/networks.ts';
 import { EsploraProvider } from './blockchain/esplora.ts';
 import { CrossCheckedProvider } from './blockchain/fallback.ts';
@@ -36,11 +35,7 @@ export function buildContext(env: Env, o: Overrides = {}): ServiceCtx {
   } catch (e) {
     throw new ConfigError(`OPERATOR_ARBITER_KEY invalid: ${e instanceof Error ? e.message : 'format'}`);
   }
-  try {
-    if (cfg.commissionXpub) cfg.commissionXpub = parseFeeXpub(cfg.commissionXpub, net);
-  } catch (e) {
-    throw new ConfigError(e instanceof Error ? e.message : 'COMMISSION_XPUB invalid');
-  }
+
   const chain =
     o.chain ??
     new CrossCheckedProvider(

@@ -6,7 +6,7 @@ import type { Notice, ServiceCtx } from './context.ts';
 import { UserError } from './context.ts';
 import { PermissionError, requirePermission, SIGNING_ROLES, type Action, type Role } from './permissions.ts';
 import { FUNDS_AT_RISK_STATES, type TradeState } from './state-machine.ts';
-import { addOperatorStmts, isOperator, operatorKeyStmt, operatorMode, upfrontFeeSats } from './operator.ts';
+import { addOperatorStmts, isOperator, operatorKeyStmt, operatorMode, serviceFeeSats } from './operator.ts';
 
 export interface NewTradeInput {
   title: string;
@@ -56,7 +56,7 @@ export async function createTrade(ctx: ServiceCtx, userId: number, input: NewTra
         ctx.cfg.commissionBps,
         ctx.cfg.refundCommissionBps,
         CONTRACT_VERSION,
-        Number(upfrontFeeSats(ctx, input.amountSats)),
+        Number(serviceFeeSats(ctx, input.amountSats)),
         now,
         now,
       ),
@@ -112,9 +112,9 @@ export function agreementContent(trade: TradeRow, parts: ParticipantRow[]): stri
     commission_bps_refund: trade.refund_commission_bps,
     fee_policy:
       trade.fee_sats > 0
-        ? 'v2: service fee paid upfront by the buyer at deposit to the operator fee address, non-refundable; miner fee paid by payout recipient'
+        ? 'v3: buyer deposits amount + service fee in one payment; the fee is paid to the operator as a separate output of every payout (release or refund), non-refundable; bypassing the bot blocks both parties; miner fee paid by payout recipient'
         : 'v1: miner fee paid by payout recipient; commission is a separate output; changes require new signatures',
-    upfront_fee_sats: String(trade.fee_sats),
+    service_fee_sats: String(trade.fee_sats),
     buyer: s.buyer,
     seller: s.seller,
     arbiter: s.arbiter,
