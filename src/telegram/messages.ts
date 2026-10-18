@@ -36,19 +36,6 @@ export const GLOSSARY =
   `• ${b('Schlichter')}: neutrale dritte Person. Entscheidet nur im Streitfall und kann allein nie auszahlen.\n` +
   `• ${b('Signet')}: Bitcoin-Testnetz. Coins haben keinen Wert – ideal zum Ausprobieren.`;
 
-/** Step-by-step wallet setup for non-technical users (Sparrow Wallet, free, Windows/Mac/Linux). */
-export const WALLET_GUIDE = html(
-  `${b('👛 Wallet einrichten (einmalig, ca. 5 Minuten)')}\n\n` +
-    `Du brauchst eine eigene Bitcoin-Wallet. Empfehlung: ${link('https://sparrowwallet.com/download/', 'Sparrow Wallet')} (kostenlos).\n\n` +
-    `${b('1.')} Sparrow installieren und öffnen.\n` +
-    `${b('2.')} Für den Test: ${i('Tools → Restart in → Signet')}.\n` +
-    `${b('3.')} ${i('File → New Wallet')}, Name z. B. „Treuhand-Handel“.\n` +
-    `${b('4.')} Oben ${i('Policy Type: Multi Signature')} wählen, dann unten ${i('New or Imported Software Wallet')}.\n` +
-    `${b('5.')} ${i('Generate New')} → die angezeigten Wörter auf Papier notieren (nie fotografieren, nie verschicken!) → bestätigen.\n` +
-    `${b('6.')} Sparrow zeigt jetzt ${i('Master fingerprint')}, ${i('Derivation')} und ${i('xpub/tpub')}. Diese drei Angaben brauchst du für den Bot.\n\n` +
-    quote(`Nur den öffentlichen Teil (tpub) an den Bot senden. ${b('Niemals')} die Wörter oder einen „tprv“.`),
-);
-
 export function privacyText(cfg: AppConfig): MessageContent {
   return html(
     `${b('🔒 Vertrauliche Informationen')}\n\n` +

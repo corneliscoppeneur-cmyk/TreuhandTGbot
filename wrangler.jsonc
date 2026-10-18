@@ -7,6 +7,9 @@
   "workers_dev": true,
   "observability": { "enabled": true },
 
+  // Static assets: picture guides (public/guide/*.png). All other paths go to the Worker.
+  "assets": { "directory": "./public" },
+
   // One Worker serves the Telegram webhook (fetch) and the blockchain poller (scheduled).
   "triggers": { "crons": ["*/5 * * * *"] },
 
@@ -43,6 +46,7 @@
     "ENABLE_AUTOMATIC_BROADCAST": "false",
     "ENABLE_CUSTODIAL_FEATURES": "false",
     "ADMIN_TELEGRAM_IDS": "7472753006",
+    "PUBLIC_BASE_URL": "https://btc-telegram-escrow.cornelis-coppeneur.workers.dev",
     // Operator mode: operator is the automatic arbiter (public key only, see docs/OPERATOR-SETUP.md)
     "OPERATOR_TELEGRAM_ID": "7472753006",
     "OPERATOR_ARBITER_KEY": "[cf1d1361/48h/1h/0h/2h]tpubDEkEGhkS3MnzBP6kTYxSHhXjdoAKuf1rWitfyqKp5tfJPirjgVxeappseFg4G6RsZuCiwfhaYLiRer5eu5MPBZubxJ8dKDUkdjL2UBaMWzG",

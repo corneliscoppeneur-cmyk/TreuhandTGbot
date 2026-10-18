@@ -263,6 +263,7 @@ async function psbtNotices(ctx: ServiceCtx, trade: TradeRow, session: SessionRow
   const buttons = [
     [{ text: '✍️ Signierte PSBT hochladen', data: `s:${session.id}:up`, style: 'primary' as const }],
     [{ text: '📋 txid kopieren', copy: session.txid }],
+    [{ text: '📸 Bilder-Anleitung: Unterschreiben', data: 'g:sign' }],
   ];
   return payoutChats(ctx, [s.buyer, s.seller, s.arbiter], disputed).flatMap((chatId) => [
     { chatId, ...summary },

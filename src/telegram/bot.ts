@@ -46,7 +46,19 @@ import { logError } from '../security/redaction.ts';
 import { clearFlow, getFlow, setFlow, type Flow } from './conversation.ts';
 import { b, code, esc, explorerAddressUrl, i, link, quote, time } from './format.ts';
 import { mainMenu, supportMenu, tradeButtons } from './keyboards.ts';
-import { feesHtml, feesText, HELP, html, MAIN_MENU, privacyText, SECURITY, termsView, tradeView, WALLET_GUIDE } from './messages.ts';
+import { feesHtml, feesText, HELP, html, MAIN_MENU, privacyText, SECURITY, termsView, tradeView } from './messages.ts';
+
+/** Buttons that open the picture guides (albums). */
+const GUIDE_BUTTONS: Button[][] = [
+  [
+    { text: '📸 Wallet einrichten', data: 'g:wallet' },
+    { text: '📸 Konto prüfen', data: 'g:trade-wallet' },
+  ],
+  [
+    { text: '📸 Einzahlen', data: 'g:deposit' },
+    { text: '📸 Unterschreiben', data: 'g:sign' },
+  ],
+];
 
 const HELP_BUTTONS: Button[][] = [
   [{ text: '➕ Jetzt Handel starten', data: 'm:new', style: 'primary' }],
@@ -56,6 +68,7 @@ const HELP_BUTTONS: Button[][] = [
   ],
 ];
 import { sendContent } from './send.ts';
+import { guideById, guideImageUrls } from './guides.ts';
 import { adminNotices, operatorMode } from '../domain/operator.ts';
 import {
   arbitrateTrade,
@@ -251,6 +264,20 @@ export function createBot(svc: ServiceCtx): Bot {
     await reply(ctx, MAIN_MENU, admin ? [...mainMenu(), [{ text: '🛎 Admin', data: 'a:home', style: 'primary' }]] : mainMenu());
   }
 
+  /** Sends a picture guide as one swipeable album, with a text version as fallback. */
+  async function sendGuide(ctx: Context, id: string) {
+    const g = guideById(id);
+    if (!g) return;
+    const steps = g.cards.map((c, i) => `${b(`${i + 1}. ${esc(c.title)}`)}\n${esc(c.lines.join(' '))}`).join('\n\n');
+    await reply(ctx, {
+      ...html(
+        `${b(`📸 ${esc(g.name)}`)} – ${g.cards.length} Schritte${svc.cfg.publicBaseUrl ? ' (Bilder oben zum Durchwischen)' : ''}\n\n${steps}`,
+      ),
+      ...(svc.cfg.publicBaseUrl ? { album: guideImageUrls(svc.cfg.publicBaseUrl, g) } : {}),
+      buttons: [...GUIDE_BUTTONS, nav()],
+    });
+  }
+
   // ---------- admin ----------
 
   async function showAdmin(ctx: Context, userId: number) {
@@ -389,7 +416,7 @@ export function createBot(svc: ServiceCtx): Bot {
       await showMenu(ctx);
     }),
   );
-  bot.command('help', (ctx) => reply(ctx, HELP, [...HELP_BUTTONS, nav()]));
+  bot.command('help', (ctx) => reply(ctx, HELP, [...HELP_BUTTONS, ...GUIDE_BUTTONS, nav()]));
   bot.command('privacy', (ctx) => reply(ctx, privacyText(svc.cfg), [nav()]));
   bot.command('fees', (ctx) => reply(ctx, feesText(svc.cfg), [nav()]));
   bot.command('support', (ctx) => reply(ctx, html(b('🛟 Support')), [...supportMenu(svc.cfg), nav()]));
@@ -470,13 +497,13 @@ export function createBot(svc: ServiceCtx): Bot {
           case 'fees':
             return void (await reply(ctx, feesText(svc.cfg), [nav()]));
           case 'help':
-            return void (await reply(ctx, HELP, [...HELP_BUTTONS, nav()]));
+            return void (await reply(ctx, HELP, [...HELP_BUTTONS, ...GUIDE_BUTTONS, nav()]));
           case 'support':
             return void (await reply(ctx, html(b('🛟 Support')), [...supportMenu(svc.cfg), nav()]));
           case 'security':
             return void (await reply(ctx, SECURITY, [nav()]));
           case 'wallet':
-            return void (await reply(ctx, WALLET_GUIDE, [nav()]));
+            return sendGuide(ctx, 'wallet');
           default:
             return showMenu(ctx);
         }
@@ -517,6 +544,7 @@ export function createBot(svc: ServiceCtx): Bot {
       if ((m = /^s:([A-Za-z0-9_-]{16}):(up|bc|show)$/.exec(data))) return onSessionAction(ctx, userId, m[1]!, m[2]!);
       if ((m = /^d:([A-Z0-9]{8}):(take|release|refund|ask)$/.exec(data))) return onDisputeAction(ctx, userId, m[1]!, m[2]!);
       if (data === 'a:home') return showAdmin(ctx, userId);
+      if ((m = /^g:([a-z-]{3,20})$/.exec(data))) return sendGuide(ctx, m[1]!);
       if (data === 'a:blocked') {
         const users = await blockedUsers(svc, userId);
         return void (await reply(ctx, users.length ? `Gesperrte Nutzer: ${users.length}` : 'Niemand ist gesperrt.', [

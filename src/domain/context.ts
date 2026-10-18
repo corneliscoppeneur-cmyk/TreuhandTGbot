@@ -35,6 +35,8 @@ export interface MessageContent {
   protect?: boolean;
   /** Ask the client to open the reply field (dialog prompts). */
   forceReply?: { placeholder?: string };
+  /** Photos sent together as one swipeable album (2–10 image URLs) before the text. */
+  album?: string[];
 }
 
 /** Outgoing message produced by a service. Private notices go to user ids; group notices are status-only. */

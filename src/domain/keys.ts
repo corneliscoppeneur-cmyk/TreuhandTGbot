@@ -52,6 +52,7 @@ export function verificationMessage(m: MultisigRow, tradeId: string): MessageCon
       [{ text: '📋 Adresse kopieren', copy: m.address }],
       [{ text: '✅ Adresse stimmt überein', data: `t:${tradeId}:verify:${m.address.slice(-8)}`, style: 'success' }],
       [{ text: '❌ Stimmt NICHT', data: `t:${tradeId}:verifyfail`, style: 'danger' }],
+      [{ text: '📸 Bilder-Anleitung: Konto prüfen', data: 'g:trade-wallet' }],
     ],
   };
 }
@@ -88,6 +89,7 @@ export function depositMessage(
         { text: '📋 Summe kopieren', copy: btcForWallet(total) },
       ],
       [{ text: '🔎 Im Explorer ansehen', url: explorerAddressUrl(netName, address) }],
+      [{ text: '📸 Bilder-Anleitung: Einzahlen', data: 'g:deposit' }],
     ],
   };
 }

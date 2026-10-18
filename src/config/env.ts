@@ -30,6 +30,8 @@ export interface Env {
   ENABLE_AUTOMATIC_BROADCAST: string;
   ENABLE_CUSTODIAL_FEATURES: string;
   ADMIN_TELEGRAM_IDS?: string;
+  /** Public https URL of this Worker; used for the picture guides (static assets). */
+  PUBLIC_BASE_URL?: string;
   /** Operator mode: the operator is automatically the arbiter (third key) of every trade. */
   OPERATOR_TELEGRAM_ID?: string;
   /** Operator arbiter key expression [fp/48h/coin h/acct h/2h]tpub… (public, watch-only). */
@@ -60,6 +62,8 @@ export interface AppConfig {
   automaticBroadcast: boolean;
   adminIds: ReadonlySet<number>;
   /** Telegram id of the operator acting as automatic arbiter, or null (arbiter is invited). */
+  /** Public URL of the Worker (guide images), or null. */
+  publicBaseUrl: string | null;
   operatorId: number | null;
   operatorArbiterKey: string | null;
 
@@ -184,6 +188,7 @@ export function parseConfig(env: Record<string, unknown>): AppConfig {
     pollMaxTradesPerRun: int(env, 'POLL_MAX_TRADES_PER_RUN', 1, 20),
     automaticBroadcast: bool(env, 'ENABLE_AUTOMATIC_BROADCAST'),
     adminIds,
+    publicBaseUrl: opt(env, 'PUBLIC_BASE_URL') ? httpsUrl(env, 'PUBLIC_BASE_URL', opt(env, 'PUBLIC_BASE_URL')!) : null,
     operatorId,
     operatorArbiterKey,
     dataRetentionDays: int(env, 'DATA_RETENTION_DAYS', 30, 3650),

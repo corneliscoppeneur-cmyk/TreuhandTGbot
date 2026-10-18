@@ -273,3 +273,26 @@ describe('HTML validator self-check', () => {
     expect(validateTelegramHtml('<blockquote><blockquote>x</blockquote></blockquote>')).toContain('nested blockquote');
   });
 });
+
+describe('picture guides', () => {
+  const BASE = 'https://bot.example.workers.dev';
+  it('are sent as ONE album (media group) with all steps, plus a text version', async () => {
+    const h = new Harness({ PUBLIC_BASE_URL: BASE });
+    await h.click(BUYER, 'g:wallet');
+    const album = h.to(BUYER).find((m) => m.method === 'sendMediaGroup')!;
+    expect(album.media).toEqual([1, 2, 3, 4, 5, 6].map((i) => `${BASE}/guide/wallet-${i}.png`));
+    expect(h.to(BUYER).filter((m) => m.method === 'sendMediaGroup')).toHaveLength(1);
+    expect(h.last(BUYER).text).toMatch(/Wallet einrichten – 6 Schritte/);
+  });
+  it('fall back to text only without a public URL', async () => {
+    const h = new Harness();
+    await h.click(BUYER, 'g:sign');
+    expect(h.to(BUYER).some((m) => m.method === 'sendMediaGroup')).toBe(false);
+    expect(h.last(BUYER).text).toMatch(/Auszahlung unterschreiben/);
+  });
+  it('every guide image exists in public/guide', async () => {
+    const { existsSync } = await import('node:fs');
+    const { GUIDES } = await import('../../src/telegram/guides.ts');
+    for (const g of GUIDES) for (let i = 1; i <= g.cards.length; i++) expect(existsSync(`public/guide/${g.id}-${i}.png`)).toBe(true);
+  });
+});

@@ -37,6 +37,12 @@ function clip(s: string): string {
  * only for content that is safe for everyone in the chat (callers decide via ephemeralFor).
  */
 export async function sendContent(api: Api, chatId: number, c: MessageContent, o: SendOptions = {}): Promise<void> {
+  if (c.album && c.album.length >= 2) {
+    await api.sendMediaGroup(
+      chatId,
+      c.album.slice(0, 10).map((media) => ({ type: 'photo' as const, media })),
+    );
+  }
   const reply_markup = toMarkup(c);
   const common = {
     ...(reply_markup ? { reply_markup } : {}),

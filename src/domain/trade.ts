@@ -218,7 +218,7 @@ export async function agreeTerms(ctx: ServiceCtx, userId: number, tradeId: strin
           '⚠️ Niemals deine Wiederherstellungswörter senden – die gehören nur dir.',
         buttons: [
           [{ text: '🔑 Schlüssel senden', data: `t:${tradeId}:key`, style: 'primary' as const }],
-          [{ text: '👛 Noch keine Wallet? Anleitung', data: 'm:wallet' }],
+          [{ text: '📸 Bilder-Anleitung: Wallet einrichten', data: 'g:wallet' }],
         ],
       }));
   }

@@ -132,6 +132,8 @@ export interface SentMessage {
   protect?: boolean;
   ephemeralFor?: number;
   forceReply?: boolean;
+  /** photo URLs of a media group (album) */
+  media?: string[];
 }
 
 export class Harness {
@@ -203,11 +205,17 @@ export class Harness {
         protect: payload.protect_content === true,
         ephemeralFor: ephemeral?.receiver_user_id,
         forceReply: markup?.force_reply === true,
+        media: Array.isArray(payload.media) ? (payload.media as { media: string }[]).map((m) => m.media) : undefined,
       });
       return new Response(
         JSON.stringify({
           ok: true,
-          result: method === 'answerCallbackQuery' ? true : { message_id: 1, date: 0, chat: { id: payload.chat_id, type: 'private' } },
+          result:
+            method === 'answerCallbackQuery'
+              ? true
+              : method === 'sendMediaGroup'
+                ? []
+                : { message_id: 1, date: 0, chat: { id: payload.chat_id, type: 'private' } },
         }),
         {
           headers: { 'content-type': 'application/json' },
