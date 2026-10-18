@@ -4,7 +4,7 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
-import { GUIDES, type GuideCard, type GuideUi } from '../src/telegram/guides.ts';
+import { guidesFor, type GuideCard, type GuideUi } from '../src/telegram/guides.ts';
 
 const W = 1280;
 const H = 960;
@@ -125,13 +125,15 @@ function card(guideName: string, accent: string, c: GuideCard, index: number, to
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${parts.join('\n')}</svg>`;
 }
 
-mkdirSync('public/guide', { recursive: true });
-for (const g of GUIDES) {
-  for (let i = 0; i < g.cards.length; i++) {
-    const svg = card(g.name, g.color, g.cards[i]!, i + 1, g.cards.length);
-    const png = await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toBuffer();
-    const file = `public/guide/${g.id}-${i + 1}.png`;
-    writeFileSync(file, png);
-    console.log(file, `${Math.round(png.length / 1024)} KB`);
+for (const network of ['signet', 'mainnet'] as const) {
+  mkdirSync(`public/guide/${network}`, { recursive: true });
+  for (const g of guidesFor(network)) {
+    for (let i = 0; i < g.cards.length; i++) {
+      const svg = card(g.name, g.color, g.cards[i]!, i + 1, g.cards.length);
+      const png = await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toBuffer();
+      const file = `public/guide/${network}/${g.id}-${i + 1}.png`;
+      writeFileSync(file, png);
+      console.log(file, `${Math.round(png.length / 1024)} KB`);
+    }
   }
 }

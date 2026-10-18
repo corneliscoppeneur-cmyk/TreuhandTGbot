@@ -1,8 +1,10 @@
 /**
  * Picture guides sent as Telegram albums (swipeable media group).
- * The images are rendered from this data by scripts/build-guides.ts into public/guide/
- * and served by the Worker as static assets.
+ * The images are rendered from this data by scripts/build-guides.ts into public/guide/<network>/
+ * and served by the Worker as static assets. The data is written for the test network (signet);
+ * guidesFor() derives the mainnet version (no test-network card, bc1 addresses, coin type 0).
  */
+import type { BitcoinNetworkName } from '../config/env.ts';
 
 export interface GuideUi {
   /** Menu path opened in the mock window, e.g. ['Tools', 'Restart In', 'Signet']. */
@@ -19,6 +21,8 @@ export interface GuideCard {
   title: string;
   lines: string[];
   ui?: GuideUi;
+  /** Only shown on the test network. */
+  testOnly?: boolean;
 }
 
 export interface Guide {
@@ -28,7 +32,7 @@ export interface Guide {
   cards: GuideCard[];
 }
 
-export const GUIDES: Guide[] = [
+const SIGNET_GUIDES: Guide[] = [
   {
     id: 'wallet',
     name: 'Wallet einrichten',
@@ -44,6 +48,7 @@ export const GUIDES: Guide[] = [
         ],
       },
       {
+        testOnly: true,
         title: 'Testnetz einschalten (nur im Test)',
         lines: [
           'Oben im Menü: Tools → Restart In → Signet.',
@@ -205,11 +210,32 @@ export const GUIDES: Guide[] = [
   },
 ];
 
-export function guideById(id: string): Guide | undefined {
-  return GUIDES.find((g) => g.id === id);
+/** Mainnet wording: real Bitcoin addresses (bc1) and derivation coin type 0. */
+function toMainnet(s: string): string {
+  return s.replaceAll('/48h/1h/', '/48h/0h/').replaceAll("m/48'/1'/", "m/48'/0'/").replaceAll('tb1q', 'bc1q').replaceAll('tpub', 'xpub');
+}
+
+/** Guides for the configured network (customers never see test-network steps on mainnet). */
+export function guidesFor(network: BitcoinNetworkName): Guide[] {
+  if (network === 'signet') return SIGNET_GUIDES;
+  return SIGNET_GUIDES.map((g) => ({
+    ...g,
+    cards: g.cards
+      .filter((c) => !c.testOnly)
+      .map((c) => ({
+        ...c,
+        title: toMainnet(c.title),
+        lines: c.lines.map(toMainnet),
+        ...(c.ui ? { ui: { ...c.ui, fields: c.ui.fields?.map((f) => ({ label: toMainnet(f.label), value: toMainnet(f.value) })) } } : {}),
+      })),
+  }));
+}
+
+export function guideById(network: BitcoinNetworkName, id: string): Guide | undefined {
+  return guidesFor(network).find((g) => g.id === id);
 }
 
 /** Public URLs of a guide's images (served by the Worker as static assets). */
-export function guideImageUrls(baseUrl: string, g: Guide): string[] {
-  return g.cards.map((_c, i) => `${baseUrl.replace(/\/+$/, '')}/guide/${g.id}-${i + 1}.png`);
+export function guideImageUrls(baseUrl: string, network: BitcoinNetworkName, g: Guide): string[] {
+  return g.cards.map((_c, i) => `${baseUrl.replace(/\/+$/, '')}/guide/${network}/${g.id}-${i + 1}.png`);
 }

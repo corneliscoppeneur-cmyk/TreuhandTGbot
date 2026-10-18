@@ -266,14 +266,14 @@ export function createBot(svc: ServiceCtx): Bot {
 
   /** Sends a picture guide as one swipeable album, with a text version as fallback. */
   async function sendGuide(ctx: Context, id: string) {
-    const g = guideById(id);
+    const g = guideById(svc.net.name, id);
     if (!g) return;
     const steps = g.cards.map((c, i) => `${b(`${i + 1}. ${esc(c.title)}`)}\n${esc(c.lines.join(' '))}`).join('\n\n');
     await reply(ctx, {
       ...html(
         `${b(`📸 ${esc(g.name)}`)} – ${g.cards.length} Schritte${svc.cfg.publicBaseUrl ? ' (Bilder oben zum Durchwischen)' : ''}\n\n${steps}`,
       ),
-      ...(svc.cfg.publicBaseUrl ? { album: guideImageUrls(svc.cfg.publicBaseUrl, g) } : {}),
+      ...(svc.cfg.publicBaseUrl ? { album: guideImageUrls(svc.cfg.publicBaseUrl, svc.net.name, g) } : {}),
       buttons: [...GUIDE_BUTTONS, nav()],
     });
   }

@@ -280,7 +280,7 @@ describe('picture guides', () => {
     const h = new Harness({ PUBLIC_BASE_URL: BASE });
     await h.click(BUYER, 'g:wallet');
     const album = h.to(BUYER).find((m) => m.method === 'sendMediaGroup')!;
-    expect(album.media).toEqual([1, 2, 3, 4, 5, 6].map((i) => `${BASE}/guide/wallet-${i}.png`));
+    expect(album.media).toEqual([1, 2, 3, 4, 5, 6].map((i) => `${BASE}/guide/signet/wallet-${i}.png`));
     expect(h.to(BUYER).filter((m) => m.method === 'sendMediaGroup')).toHaveLength(1);
     expect(h.last(BUYER).text).toMatch(/Wallet einrichten – 6 Schritte/);
   });
@@ -292,7 +292,15 @@ describe('picture guides', () => {
   });
   it('every guide image exists in public/guide', async () => {
     const { existsSync } = await import('node:fs');
-    const { GUIDES } = await import('../../src/telegram/guides.ts');
-    for (const g of GUIDES) for (let i = 1; i <= g.cards.length; i++) expect(existsSync(`public/guide/${g.id}-${i}.png`)).toBe(true);
+    const { guidesFor } = await import('../../src/telegram/guides.ts');
+    for (const net of ['signet', 'mainnet'] as const)
+      for (const g of guidesFor(net))
+        for (let i = 1; i <= g.cards.length; i++) expect(existsSync(`public/guide/${net}/${g.id}-${i}.png`)).toBe(true);
+  });
+  it('mainnet guides contain no test-network content', async () => {
+    const { guidesFor } = await import('../../src/telegram/guides.ts');
+    const all = JSON.stringify(guidesFor('mainnet'));
+    expect(all).not.toMatch(/Signet|Testnetz|tb1q|tpub|\/48h\/1h\/|48'\/1'/);
+    expect(guidesFor('mainnet').find((g) => g.id === 'wallet')!.cards).toHaveLength(5);
   });
 });
