@@ -44,7 +44,7 @@ import {
 } from '../disputes/disputes.ts';
 import { logError } from '../security/redaction.ts';
 import { clearFlow, getFlow, setFlow, type Flow } from './conversation.ts';
-import { b, code, esc, explorerAddressUrl, i, link, quote, spoiler, time } from './format.ts';
+import { b, code, esc, explorerAddressUrl, i, link, quote, time } from './format.ts';
 import { mainMenu, supportMenu, tradeButtons } from './keyboards.ts';
 import { feesHtml, feesText, HELP, html, MAIN_MENU, privacyText, SECURITY, termsView, tradeView } from './messages.ts';
 import { sendContent } from './send.ts';
@@ -377,7 +377,7 @@ export function createBot(svc: ServiceCtx): Bot {
             `${b(`✉️ Einladung als ${ROLE_LABEL_DE[inv.role]} für #${esc(m[1]!)}`)}\n` +
               `Einmalig, gültig bis ${time(inv.expiresAt, 'wDT')} (${time(inv.expiresAt, 'r')}).\n\n` +
               `Link:\n${code(inv.link)}\n\n` +
-              `Zugangscode (antippen zum Anzeigen): ${spoiler(esc(inv.accessCode))}\n\n` +
+              `Zugangscode: ${code(inv.accessCode)}\n\n` +
               quote(
                 `Sende Link und Code auf GETRENNTEN Wegen, z. B. den Code per ${link(svc.cfg.cryptgeonUrl, 'verschlüsseltem Einmal-Link')}. ` +
                   'Der Link wird beim ersten Öffnen an dieses Telegram-Konto gebunden.',
@@ -524,9 +524,9 @@ export function createBot(svc: ServiceCtx): Bot {
       `Erwartet: ${b(esc(formatBtc(BigInt(a.trade.amount_sats))))} BTC\n` +
       `Gesehen: ${seen.length} Zahlung(en), Summe ${esc(formatBtc(sum))} BTC, bestätigt: ${seen.filter((f) => f.status === 'confirmed').length}`;
     const buttons: Button[][] = [];
-    // address only for signing parties, only in private chat, hidden behind a spoiler
+    // address only for signing parties, only in private chat
     if (ms && isSigningRole(a.role) && ctx.chat?.type === 'private') {
-      markup += `\n\nTreuhandadresse (antippen): ${spoiler(esc(ms.address))}`;
+      markup += `\n\nTreuhandadresse: ${code(ms.address)}`;
       buttons.push([
         { text: '📋 Adresse kopieren', copy: ms.address },
         { text: '🔎 Explorer', url: explorerAddressUrl(svc.net.name, ms.address) },

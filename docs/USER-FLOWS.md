@@ -40,7 +40,6 @@ Empfänger gibt privat Adresse an → Bot erstellt PSBT und zeigt Zusammenfassun
 | Funktion | Einsatz |
 |---|---|
 | Rich Messages (`sendRichMessage`) | Handelsübersicht (Tabellen), Bedingungen (aufklappbare Abschnitte), PSBT-Zusammenfassung (Tabelle der Outputs). Fallback automatisch auf HTML, dann Klartext. |
-| Spoiler (`<tg-spoiler>`) | Treuhandadresse, Empfangsadressen in der PSBT-Übersicht, Zugangscode der Einladung – erst nach Antippen lesbar |
 | Kopier-Buttons (`copy_text`) | Adresse, Betrag (`0.01000000`), Einladungslink, Zugangscode, txid |
 | Code-Blöcke (`<pre>`) | Descriptor und PSBT (Antippen kopiert) |
 | Farbige Buttons (`style`) | grün = bestätigen/freigeben/senden, rot = abbrechen/Streitfall/„stimmt nicht“, blau = nächster Schritt |

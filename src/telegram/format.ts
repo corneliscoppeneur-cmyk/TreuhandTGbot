@@ -11,8 +11,6 @@ export const b = (s: string): string => `<b>${s}</b>`;
 export const i = (s: string): string => `<i>${s}</i>`;
 export const code = (s: string): string => `<code>${esc(s)}</code>`;
 export const pre = (s: string): string => `<pre>${esc(s)}</pre>`;
-/** Hidden until tapped – for addresses and codes that should not be readable at a glance. */
-export const spoiler = (s: string): string => `<tg-spoiler>${s}</tg-spoiler>`;
 export const quote = (s: string, expandable = false): string => `<blockquote${expandable ? ' expandable' : ''}>${s}</blockquote>`;
 
 export function link(url: string, text: string): string {

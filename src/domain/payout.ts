@@ -29,7 +29,7 @@ import { newSessionId } from '../security/tokens.ts';
 import { logError } from '../security/redaction.ts';
 import { formatBtc, formatSats } from './amount.ts';
 import type { MessageContent, Notice, ServiceCtx } from './context.ts';
-import { b, code, esc, explorerTxUrl, pre, spoiler, table, time, toPlain } from '../telegram/format.ts';
+import { b, code, esc, explorerTxUrl, pre, table, time, toPlain } from '../telegram/format.ts';
 import { UserError } from './context.ts';
 import { commissionSats, formatBps } from './fees.ts';
 import { escrowFromRow } from './keys.ts';
@@ -111,7 +111,7 @@ function payoutKindForStatus(status: string): PayoutKind | null {
   return null;
 }
 
-/** PSBT session summary as rich message (table of outputs, spoilered addresses, txid, expiry). */
+/** PSBT session summary as rich message (table of outputs, addresses, txid, expiry). */
 export function sessionSummary(trade: TradeRow, session: SessionRow, netName: 'signet' | 'mainnet', expected?: string): MessageContent {
   const outs = JSON.parse(session.outputs_json) as { purpose: PayoutOutput['purpose']; address: string; valueSats: string }[];
   const utxos = JSON.parse(session.utxos_json) as { txid: string; vout: number; valueSats: string }[];
@@ -121,7 +121,7 @@ export function sessionSummary(trade: TradeRow, session: SessionRow, netName: 's
     ...outs.map((o) => [
       o.purpose === 'recipient' ? 'Empfänger' : 'Provision Betreiber',
       `${b(esc(formatBtc(BigInt(o.valueSats))))} BTC`,
-      spoiler(esc(o.address)),
+      code(o.address),
     ]),
     ['Netzwerkgebühr', `${esc(formatSats(BigInt(session.miner_fee_sats)))} (${esc(session.fee_rate)} sat/vB)`, '–'],
   ];

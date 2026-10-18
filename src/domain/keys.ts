@@ -6,7 +6,7 @@ import type { EscrowScript } from '../bitcoin/psbt.ts';
 import { auditStmt, getMultisig, getTrade, listParticipants, transition, type MultisigRow } from '../database/repo.ts';
 import { looksLikeMnemonic, looksLikePrivateKey } from '../security/redaction.ts';
 import type { MessageContent, Notice, ServiceCtx } from './context.ts';
-import { b, btcForWallet, code, esc, explorerAddressUrl, i, pre, quote, spoiler, toPlain } from '../telegram/format.ts';
+import { b, btcForWallet, code, esc, explorerAddressUrl, i, pre, quote, toPlain } from '../telegram/format.ts';
 import { UserError } from './context.ts';
 import { formatBtc } from './amount.ts';
 import { authorize, isSigningRole, signerIds } from './trade.ts';
@@ -53,12 +53,12 @@ export function verificationMessage(m: MultisigRow, tradeId: string): MessageCon
   };
 }
 
-/** Private deposit instructions for the buyer: address hidden behind a spoiler, copy buttons, explorer link. */
+/** Private deposit instructions for the buyer: copy buttons, explorer link. */
 export function depositMessage(tradeId: string, amountSats: bigint, address: string, netName: 'signet' | 'mainnet'): MessageContent {
   const markup =
     `${b(`💰 Handel #${esc(tradeId)}: Bereit zur Einzahlung`)}\n\n` +
     `Betrag: ${b(`exakt ${esc(formatBtc(amountSats))} BTC`)} (${esc(netName)})\n` +
-    `Adresse (2-von-3-Multisig, antippen zum Anzeigen):\n${spoiler(esc(address))}\n\n` +
+    `Adresse (2-von-3-Multisig):\n${code(address)}\n\n` +
     'Bitte genau diesen Betrag in EINER oder mehreren Zahlungen senden. Die Summe muss exakt stimmen; ' +
     'Überzahlungen führen zu manueller Prüfung. Netzwerkgebühren der Einzahlung trägst du.\n\n' +
     i('Hinweis: Blockchain-APIs können abgefragte Adressen beobachten. Bitcoin-Adressen sind nicht anonym.');

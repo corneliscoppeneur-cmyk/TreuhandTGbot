@@ -82,13 +82,13 @@ describe('Telegram UX', () => {
     expect(m.raw).not.toContain('<a href="x">');
   });
 
-  it('invite: code hidden in spoiler, copy buttons, expiry as tg-time', async () => {
+  it('invite: code shown as copyable code, copy buttons, expiry as tg-time', async () => {
     const h = new Harness();
     const id = await newTrade(h);
     await h.click(BUYER, `i:${id}:seller`);
     const m = h.last(BUYER);
     const code = /Zugangscode[^:]*: ([A-Z0-9]{8})/.exec(m.text)![1]!;
-    expect(m.raw).toContain(`<tg-spoiler>${code}</tg-spoiler>`);
+    expect(m.raw).toContain(`<code>${code}</code>`);
     expect(m.raw).toMatch(/<tg-time unix="\d+" format="wDT">/);
     expect(m.buttons.find((b) => b.copy === code)).toBeDefined();
     expect(m.buttons.find((b) => b.copy?.startsWith('https://t.me/TestTreuhandBot?start=i_'))).toBeDefined();
@@ -100,11 +100,11 @@ describe('Telegram UX', () => {
     expect(h.last(BUYER).forceReply).toBe(true);
   });
 
-  it('deposit info hides the address in a spoiler and offers copy + explorer', async () => {
+  it('deposit info shows the address as code and offers copy + explorer', async () => {
     const h = new Harness();
     const { address } = await setupFundedTrade(h);
     const deposit = h.to(BUYER).find((m) => m.text.includes('Bereit zur Einzahlung'))!;
-    expect(deposit.raw).toContain(`<tg-spoiler>${address}</tg-spoiler>`);
+    expect(deposit.raw).toContain(`<code>${address}</code>`);
     expect(deposit.buttons.find((b) => b.copy === address)).toBeDefined();
     expect(deposit.buttons.find((b) => b.copy === '0.01000000')).toBeDefined();
     expect(deposit.buttons.find((b) => b.url === `https://mempool.space/signet/address/${address}`)).toBeDefined();
@@ -119,7 +119,7 @@ describe('Telegram UX', () => {
     expect(v.buttons.find((b) => b.data?.endsWith(':verifyfail'))?.style).toBe('danger');
   });
 
-  it('PSBT summary is a rich table with spoilered addresses; send button turns green after 2 signatures', async () => {
+  it('PSBT summary is a rich table with addresses; send button turns green after 2 signatures', async () => {
     const h = new Harness();
     const { tradeId } = await setupFundedTrade(h);
     await h.click(BUYER, `t:${tradeId}:release`);
@@ -127,7 +127,7 @@ describe('Telegram UX', () => {
     await h.text(SELLER, testAddress('seller-payout'));
     const summary = h.to(BUYER).find((m) => m.method === 'sendRichMessage' && m.raw.includes('AUSZAHLUNG'))!;
     expect(summary.raw).toContain('<table>');
-    expect(summary.raw).toContain(`<tg-spoiler>${testAddress('seller-payout')}</tg-spoiler>`);
+    expect(summary.raw).toContain(`<code>${testAddress('seller-payout')}</code>`);
     const psbt = h.psbt(BUYER);
     for (const [id, role] of [
       [BUYER, 'buyer'],
