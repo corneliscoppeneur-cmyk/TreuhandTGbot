@@ -42,7 +42,11 @@
     "POLL_MAX_TRADES_PER_RUN": "4",
     "ENABLE_AUTOMATIC_BROADCAST": "false",
     "ENABLE_CUSTODIAL_FEATURES": "false",
-    "ADMIN_TELEGRAM_IDS": "",
+    "ADMIN_TELEGRAM_IDS": "7472753006",
+    // Operator mode (automatic arbiter + upfront fee). Fill in after creating the wallets in Sparrow (see docs/OPERATOR-SETUP.md):
+    // "OPERATOR_TELEGRAM_ID": "7472753006",
+    // "OPERATOR_ARBITER_KEY": "[fingerprint/48h/1h/0h/2h]tpub…",
+    // "COMMISSION_XPUB": "vpub…",
     "DATA_RETENTION_DAYS": "180",
   },
 }

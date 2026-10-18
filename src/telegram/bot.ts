@@ -56,6 +56,7 @@ const HELP_BUTTONS: Button[][] = [
   ],
 ];
 import { sendContent } from './send.ts';
+import { adminNotices, operatorMode } from '../domain/operator.ts';
 
 const TRADE_ID_RE = /^[A-Z0-9]{8}$/;
 
@@ -103,6 +104,16 @@ function isUserFacing(e: unknown): e is Error {
     e instanceof ConcurrencyError ||
     e instanceof AmountError
   );
+}
+
+/** Navigation row so users never have to scroll up: back to the trade and/or the main menu. */
+function nav(tradeId?: string): Button[] {
+  return tradeId
+    ? [
+        { text: '⬅️ Zurück zum Handel', data: `t:${tradeId}:view` },
+        { text: '🏠 Menü', data: 'm:menu' },
+      ]
+    : [{ text: '🏠 Zurück zum Menü', data: 'm:menu' }];
 }
 
 /** A dialog prompt that opens the reply field with a hint. */
@@ -247,12 +258,13 @@ export function createBot(svc: ServiceCtx): Bot {
   async function showTrades(ctx: Context, userId: number) {
     const trades = await listUserTrades(db, userId);
     if (trades.length === 0)
-      return reply(ctx, 'Noch keine Handelsfälle.', [[{ text: '➕ Neuen Handel erstellen', data: 'm:new', style: 'primary' }]]);
-    await reply(
-      ctx,
-      html(b('📂 Meine Handelsfälle')),
-      trades.map((t) => [{ text: `#${t.id} · ${t.title.slice(0, 24)} · ${STATE_LABEL_DE[t.status]}`, data: `t:${t.id}:view` }]),
-    );
+      return reply(ctx, 'Noch keine Handelsfälle.', [[{ text: '➕ Neuen Handel starten', data: 'm:new', style: 'primary' }], nav()]);
+    await reply(ctx, html(b('📂 Meine Handelsfälle')), [
+      ...trades.map((t): Button[] => [
+        { text: `#${t.id} · ${t.title.slice(0, 24)} · ${STATE_LABEL_DE[t.status]}`, data: `t:${t.id}:view` },
+      ]),
+      nav(),
+    ]);
   }
 
   async function startNewTrade(ctx: Context, userId: number) {
@@ -273,7 +285,7 @@ export function createBot(svc: ServiceCtx): Bot {
         { text: 'Käufer einladen', data: `i:${tradeId}:buyer` },
         { text: 'Verkäufer einladen', data: `i:${tradeId}:seller` },
       ],
-      [{ text: '⚖️ Schlichter einladen', data: `i:${tradeId}:arbiter`, style: 'primary' }],
+      ...(operatorMode(svc) ? [] : [[{ text: '⚖️ Schlichter einladen', data: `i:${tradeId}:arbiter`, style: 'primary' } as Button]]),
       [
         { text: 'Vermittler einladen', data: `i:${tradeId}:mediator` },
         { text: 'Beobachter einladen', data: `i:${tradeId}:observer` },
@@ -282,7 +294,14 @@ export function createBot(svc: ServiceCtx): Bot {
         { text: `Widerrufen: ${ROLE_LABEL_DE[i.role]} (#${i.id})`, data: `r:${tradeId}:${i.id}`, style: 'danger' },
       ]),
     ];
-    await reply(ctx, html(`${b(`✉️ Einladungen für #${esc(tradeId)}`)}\nAktive Einladungen: ${invites.length}`), rows);
+    await reply(
+      ctx,
+      html(
+        `${b(`✉️ Einladungen für #${esc(tradeId)}`)}\nAktive Einladungen: ${invites.length}` +
+          (operatorMode(svc) ? '\n\n⚖️ Der Schlichter ist automatisch der Betreiber – du musst nur dein Gegenüber einladen.' : ''),
+      ),
+      [...rows, nav(tradeId)],
+    );
   }
 
   async function showDisputes(ctx: Context, userId: number) {
@@ -290,12 +309,12 @@ export function createBot(svc: ServiceCtx): Bot {
     if (ds.length === 0)
       return void (await reply(ctx, `Keine offenen Streitfälle.\n\n${DISPUTE_LIMITS_TEXT}`, [
         [{ text: 'Support', url: svc.cfg.supportUrl }],
+        nav(),
       ]));
-    await reply(
-      ctx,
-      html(b('⚖️ Offene Streitfälle')),
-      ds.map((d) => [{ text: `#${d.trade_id} · ${d.status}`, data: `t:${d.trade_id}:view` }]),
-    );
+    await reply(ctx, html(b('⚖️ Offene Streitfälle')), [
+      ...ds.map((d): Button[] => [{ text: `#${d.trade_id} · ${d.status}`, data: `t:${d.trade_id}:view` }]),
+      nav(),
+    ]);
   }
 
   // ---------- commands ----------
@@ -324,10 +343,10 @@ export function createBot(svc: ServiceCtx): Bot {
       await showMenu(ctx);
     }),
   );
-  bot.command('help', (ctx) => reply(ctx, HELP, HELP_BUTTONS));
-  bot.command('privacy', (ctx) => reply(ctx, privacyText(svc.cfg)));
-  bot.command('fees', (ctx) => reply(ctx, feesText(svc.cfg)));
-  bot.command('support', (ctx) => reply(ctx, html(b('🛟 Support')), supportMenu(svc.cfg)));
+  bot.command('help', (ctx) => reply(ctx, HELP, [...HELP_BUTTONS, nav()]));
+  bot.command('privacy', (ctx) => reply(ctx, privacyText(svc.cfg), [nav()]));
+  bot.command('fees', (ctx) => reply(ctx, feesText(svc.cfg), [nav()]));
+  bot.command('support', (ctx) => reply(ctx, html(b('🛟 Support')), [...supportMenu(svc.cfg), nav()]));
   bot.command('newtrade', (ctx) => guard(ctx, () => startNewTrade(ctx, ctx.from!.id)));
   bot.command('mytrades', (ctx) => guard(ctx, async () => void (await showTrades(ctx, ctx.from!.id))));
   bot.command('cancel', async (ctx) => {
@@ -402,15 +421,15 @@ export function createBot(svc: ServiceCtx): Bot {
           case 'disputes':
             return showDisputes(ctx, userId);
           case 'fees':
-            return void (await reply(ctx, feesText(svc.cfg)));
+            return void (await reply(ctx, feesText(svc.cfg), [nav()]));
           case 'help':
-            return void (await reply(ctx, HELP, HELP_BUTTONS));
+            return void (await reply(ctx, HELP, [...HELP_BUTTONS, nav()]));
           case 'support':
-            return void (await reply(ctx, html(b('🛟 Support')), supportMenu(svc.cfg)));
+            return void (await reply(ctx, html(b('🛟 Support')), [...supportMenu(svc.cfg), nav()]));
           case 'security':
-            return void (await reply(ctx, SECURITY));
+            return void (await reply(ctx, SECURITY, [nav()]));
           case 'wallet':
-            return void (await reply(ctx, WALLET_GUIDE, [[{ text: '⬅️ Zurück zum Menü', data: 'm:menu' }]]));
+            return void (await reply(ctx, WALLET_GUIDE, [nav()]));
           default:
             return showMenu(ctx);
         }
@@ -471,7 +490,7 @@ export function createBot(svc: ServiceCtx): Bot {
                 ],
               ]
             : undefined;
-        return void (await reply(ctx, termsView(a.trade), rows));
+        return void (await reply(ctx, termsView(a.trade), [...(rows ?? []), nav(tradeId)]));
       }
       case 'agree':
         return send(await agreeTerms(svc, userId, tradeId, arg ?? ''));
@@ -491,7 +510,7 @@ export function createBot(svc: ServiceCtx): Bot {
       }
       case 'fees':
         await authorize(svc, userId, tradeId, 'view_trade');
-        return void (await reply(ctx, html(feesHtml(svc.cfg))));
+        return void (await reply(ctx, html(feesHtml(svc.cfg)), [nav(tradeId)]));
       case 'pay':
         return showPayment(ctx, userId, tradeId);
       case 'inv':
@@ -499,7 +518,10 @@ export function createBot(svc: ServiceCtx): Bot {
       case 'key': {
         const a = await authorize(svc, userId, tradeId, 'register_key');
         const ms = await getMultisig(db, tradeId);
-        if (ms) return void (await reply(ctx, verificationMessage(ms, tradeId)));
+        if (ms) {
+          const v = verificationMessage(ms, tradeId);
+          return void (await reply(ctx, v, [...(v.buttons ?? []), nav(tradeId)]));
+        }
         if (a.trade.status !== 'KEY_SETUP') throw new UserError('Jetzt keine Schlüsselregistrierung.');
         await setFlow(db, userId, { flow: 'key', step: 'key', data: { tradeId } }, svc.now());
         return void (await reply(ctx, {
@@ -588,7 +610,7 @@ export function createBot(svc: ServiceCtx): Bot {
         { text: '🔎 Explorer', url: explorerAddressUrl(svc.net.name, ms.address) },
       ]);
     }
-    await reply(ctx, { ...html(markup), buttons });
+    await reply(ctx, { ...html(markup), buttons: [...buttons, nav(tradeId)] });
   }
 
   async function onSessionAction(ctx: Context, userId: number, sessionId: string, action: string) {
@@ -681,6 +703,18 @@ export function createBot(svc: ServiceCtx): Bot {
       creatorRole: d.role!,
     });
     await clearFlow(db, userId);
+    await send(adminNotices(svc, `Neuer Handel #${t.id}: ${t.title.slice(0, 40)} · ${formatBtc(BigInt(t.amount_sats))} BTC`));
+    if (operatorMode(svc)) {
+      return void (await reply(
+        ctx,
+        html(
+          `✅ ${b(`Handel #${esc(t.id)} erstellt`)}\n\n` +
+            `Als Nächstes lädst du dein Gegenüber (${d.role === 'buyer' ? 'Verkäufer' : 'Käufer'}) ein.\n\n` +
+            `⚖️ Der ${b('Schlichter')} ist automatisch der Betreiber. Er greift nur bei Streit ein und kann allein nie auszahlen.`,
+        ),
+        [[{ text: '✉️ Gegenüber einladen', data: `t:${t.id}:inv`, style: 'primary' }], [{ text: 'Handel öffnen', data: `t:${t.id}:view` }]],
+      ));
+    }
     await reply(
       ctx,
       html(

@@ -15,6 +15,7 @@ import {
 import { formatBtc } from '../domain/amount.ts';
 import type { Notice, ServiceCtx } from '../domain/context.ts';
 import { broadcastSession } from '../domain/payout.ts';
+import { adminNotices, isOperator } from '../domain/operator.ts';
 import { STATE_LABEL_DE, type TradeState } from '../domain/state-machine.ts';
 import { groupNotice, isSigningRole, signerIds } from '../domain/trade.ts';
 import { logError, redact } from '../security/redaction.ts';
@@ -125,12 +126,18 @@ async function toReview(ctx: ServiceCtx, tradeId: string, reason: string): Promi
     logError('toReview', e);
     return [];
   }
-  return notifySigners(ctx, t, `⚠️ Handel #${tradeId}: Manuelle Prüfung erforderlich: ${reason}. Keine automatische Freigabe.`);
+  return [
+    ...(await notifySigners(ctx, t, `⚠️ Handel #${tradeId}: Manuelle Prüfung erforderlich: ${reason}. Keine automatische Freigabe.`)),
+    ...adminNotices(ctx, `⚠️ Handel #${tradeId} braucht Prüfung: ${reason}`),
+  ];
 }
 
 async function notifySigners(ctx: ServiceCtx, t: TradeRow, text: string): Promise<Notice[]> {
   const parts = await listParticipants(ctx.db, t.id);
-  return parts.filter((p) => isSigningRole(p.role)).map((p) => ({ chatId: p.telegram_user_id, text }));
+  // the operator gets admin notices instead of the routine signer notices
+  return parts
+    .filter((p) => isSigningRole(p.role) && !isOperator(ctx, p.telegram_user_id))
+    .map((p) => ({ chatId: p.telegram_user_id, text }));
 }
 
 /** Returns seconds until next poll, or null to stop polling this trade. */
@@ -195,7 +202,20 @@ async function pollFunding(ctx: ServiceCtx, t: TradeRow, tip: number, out: Notic
     out.push(...(await toReview(ctx, t.id, `Überzahlung: ${formatBtc(ev.totalSats)} statt ${formatBtc(BigInt(t.amount_sats))} BTC`)));
     return INTERVAL.holding;
   }
-  if (ev.verdict === 'funded') {
+  // Upfront fee: must be confirmed on the per-trade fee address before the trade counts as funded.
+  let feeOk = true;
+  if (t.fee_address && t.fee_sats > 0 && !t.fee_paid_at) {
+    const rec = await ctx.chain.getAddressReceived(t.fee_address);
+    if (rec.confirmedSats >= BigInt(t.fee_sats)) {
+      await ctx.db.prepare('UPDATE trades SET fee_paid_at = ? WHERE id = ? AND fee_paid_at IS NULL').bind(now, t.id).run();
+      await auditStmt(ctx.db, { tradeId: t.id, actorId: 0, action: 'fee_received', detail: rec.confirmedSats.toString(), now }).run();
+      out.push(...adminNotices(ctx, `💰 Gebühr für Handel #${t.id} erhalten: ${formatBtc(rec.confirmedSats)} BTC (an ${t.fee_address}).`));
+    } else {
+      feeOk = false;
+    }
+  }
+
+  if (ev.verdict === 'funded' && feeOk) {
     await transition(ctx.db, {
       tradeId: t.id,
       from: t.status,
@@ -224,10 +244,12 @@ Ab jetzt kann es nur noch mit 2 von 3 Unterschriften bewegt werden.`,
           ]
         : []),
       ...groupNotice(fresh, STATE_LABEL_DE.FUNDED),
+      ...adminNotices(ctx, `Handel #${t.id} ist finanziert (${formatBtc(BigInt(t.amount_sats))} BTC im Treuhand-Konto).`),
     );
     return INTERVAL.holding;
   }
-  if ((ev.verdict === 'pending' || ev.verdict === 'partial') && t.status === 'READY_TO_FUND') {
+  const feeMissing = ev.verdict === 'funded' && !feeOk;
+  if ((ev.verdict === 'pending' || ev.verdict === 'partial' || feeMissing) && t.status === 'READY_TO_FUND') {
     await transition(ctx.db, {
       tradeId: t.id,
       from: 'READY_TO_FUND',
@@ -240,8 +262,9 @@ Ab jetzt kann es nur noch mit 2 von 3 Unterschriften bewegt werden.`,
     if (s.buyer) {
       out.push({
         chatId: s.buyer,
-        text:
-          ev.verdict === 'partial'
+        text: feeMissing
+          ? `⏳ Handel #${t.id}: Der Handelsbetrag ist im Treuhand-Konto angekommen. Es fehlt noch die Servicegebühr (${formatBtc(BigInt(t.fee_sats))} BTC an ${t.fee_address}). Der Handel startet, sobald sie bestätigt ist.`
+          : ev.verdict === 'partial'
             ? `⏳ Handel #${t.id}: Teilzahlung erkannt – ${formatBtc(ev.totalSats)} von ${formatBtc(BigInt(t.amount_sats))} BTC. Bitte den Rest (${formatBtc(BigInt(t.amount_sats) - ev.totalSats)} BTC) an dieselbe Adresse senden.`
             : `⏳ Handel #${t.id}: Deine Zahlung ist unterwegs. Sobald das Bitcoin-Netzwerk sie bestätigt hat (meist 10–30 Minuten), melde ich mich.`,
       });
@@ -389,6 +412,10 @@ async function pollBroadcast(ctx: ServiceCtx, t: TradeRow, tip: number, out: Not
       `🎉 Handel #${t.id} ist abgeschlossen: ${to === 'COMPLETE' ? 'Der Verkäufer wurde ausgezahlt' : 'Der Käufer hat sein Geld zurück'} – vom Bitcoin-Netzwerk bestätigt. Danke fürs Nutzen!`,
     )),
     ...groupNotice(fresh, STATE_LABEL_DE[to]),
+    ...adminNotices(
+      ctx,
+      `Handel #${t.id} abgeschlossen: ${to === 'COMPLETE' ? 'Auszahlung an Verkäufer' : 'Rückzahlung an Käufer'} bestätigt.`,
+    ),
   );
   return null;
 }

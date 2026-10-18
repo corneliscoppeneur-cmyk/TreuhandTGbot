@@ -10,6 +10,8 @@ import { b, btcForWallet, code, esc, explorerAddressUrl, i, pre, quote, toPlain 
 import { UserError } from './context.ts';
 import { formatBtc } from './amount.ts';
 import { authorize, isSigningRole, signerIds } from './trade.ts';
+import { adminNotices, isOperator } from './operator.ts';
+import { feeAddress } from '../bitcoin/fee-wallet.ts';
 
 interface SignerRow {
   role: 'buyer' | 'seller' | 'arbiter';
@@ -55,27 +57,53 @@ export function verificationMessage(m: MultisigRow, tradeId: string): MessageCon
   };
 }
 
-/** Private deposit instructions for the buyer: copy buttons, explorer link. */
-export function depositMessage(tradeId: string, amountSats: bigint, address: string, netName: 'signet' | 'mainnet'): MessageContent {
-  const markup =
-    `${b(`💰 Handel #${esc(tradeId)}: Bereit zur Einzahlung`)}\n\n` +
-    'Alle haben das Treuhand-Konto geprüft. Du kannst jetzt sicher einzahlen.\n\n' +
-    `Betrag: ${b(`genau ${esc(formatBtc(amountSats))} BTC`)}${netName === 'signet' ? ' (Test-Bitcoin)' : ''}\n` +
-    `An diese Adresse:\n${code(address)}\n\n` +
-    `${b('Wichtig:')}\n` +
-    '• Genau diesen Betrag senden – die Gebühr deiner Wallet kommt obendrauf.\n' +
-    '• Zu viel gesendet? Dann wird nichts automatisch weitergeleitet, der Handel wird erst geprüft.\n' +
-    '• Der Bot meldet sich, sobald das Geld angekommen und bestätigt ist (meist 10–30 Minuten).\n\n' +
-    i('Datenschutz: Bitcoin-Adressen sind öffentlich einsehbar und nicht anonym.');
+/** Private deposit instructions for the buyer: escrow payment plus (optional) upfront service fee, copy buttons. */
+export function depositMessage(
+  tradeId: string,
+  amountSats: bigint,
+  address: string,
+  netName: 'signet' | 'mainnet',
+  fee?: { sats: bigint; address: string },
+): MessageContent {
+  const test = netName === 'signet' ? ' (Test-Bitcoin)' : '';
+  const markup = fee
+    ? `${b(`💰 Handel #${esc(tradeId)}: Bereit zur Einzahlung`)}\n\n` +
+      'Alle haben das Treuhand-Konto geprüft. Du kannst jetzt sicher einzahlen. Bitte sende zwei Zahlungen:\n\n' +
+      `${b('1️⃣ Handelsbetrag ins Treuhand-Konto')}\n${b(`genau ${esc(formatBtc(amountSats))} BTC`)}${test} an:\n${code(address)}\n\n` +
+      `${b('2️⃣ Servicegebühr')}\n${b(`genau ${esc(formatBtc(fee.sats))} BTC`)} an:\n${code(fee.address)}\n\n` +
+      `💡 ${i('Tipp: In Sparrow beides in einer Überweisung – unter „Send“ mit „+ Add“ einen zweiten Empfänger hinzufügen.')}\n\n` +
+      `${b('Wichtig:')}\n` +
+      '• Der Handel startet erst, wenn beide Zahlungen bestätigt sind.\n' +
+      '• Die Servicegebühr wird nicht erstattet – auch nicht bei einer Rückzahlung.\n' +
+      '• Die Netzwerkgebühr deiner Wallet kommt obendrauf.\n' +
+      '• Zu viel ins Treuhand-Konto gesendet? Dann wird nichts automatisch weitergeleitet, der Handel wird erst geprüft.\n\n' +
+      i('Datenschutz: Bitcoin-Adressen sind öffentlich einsehbar und nicht anonym.')
+    : `${b(`💰 Handel #${esc(tradeId)}: Bereit zur Einzahlung`)}\n\n` +
+      'Alle haben das Treuhand-Konto geprüft. Du kannst jetzt sicher einzahlen.\n\n' +
+      `Betrag: ${b(`genau ${esc(formatBtc(amountSats))} BTC`)}${test}\n` +
+      `An diese Adresse:\n${code(address)}\n\n` +
+      `${b('Wichtig:')}\n` +
+      '• Genau diesen Betrag senden – die Gebühr deiner Wallet kommt obendrauf.\n' +
+      '• Zu viel gesendet? Dann wird nichts automatisch weitergeleitet, der Handel wird erst geprüft.\n' +
+      '• Der Bot meldet sich, sobald das Geld angekommen und bestätigt ist (meist 10–30 Minuten).\n\n' +
+      i('Datenschutz: Bitcoin-Adressen sind öffentlich einsehbar und nicht anonym.');
   return {
     text: toPlain(markup),
     html: markup,
     buttons: [
       [
-        { text: '📋 Adresse kopieren', copy: address, style: 'primary' },
-        { text: '📋 Betrag kopieren', copy: btcForWallet(amountSats) },
+        { text: '📋 Treuhand-Adresse', copy: address, style: 'primary' },
+        { text: '📋 Betrag', copy: btcForWallet(amountSats) },
       ],
-      [{ text: '🔎 Im Explorer ansehen', url: explorerAddressUrl(netName, address) }],
+      ...(fee
+        ? [
+            [
+              { text: '📋 Gebühren-Adresse', copy: fee.address, style: 'primary' as const },
+              { text: '📋 Gebühr', copy: btcForWallet(fee.sats) },
+            ],
+          ]
+        : []),
+      [{ text: '🔎 Treuhand-Konto im Explorer', url: explorerAddressUrl(netName, address) }],
     ],
   };
 }
@@ -170,7 +198,7 @@ export async function registerKey(ctx: ServiceCtx, userId: number, tradeId: stri
   const m = (await getMultisig(ctx.db, tradeId))!;
   const s = signerIds(await listParticipants(ctx.db, tradeId));
   return [s.buyer, s.seller, s.arbiter]
-    .filter((x): x is number => x !== undefined)
+    .filter((x): x is number => x !== undefined && !isOperator(ctx, x))
     .map((chatId) => ({
       chatId,
       ...verificationMessage(m, tradeId),
@@ -195,6 +223,13 @@ export async function confirmAddress(ctx: ServiceCtx, userId: number, tradeId: s
     return [{ chatId: userId, text: '✅ Danke, deine Prüfung ist gespeichert. Sobald alle bestätigt haben, kann der Käufer einzahlen.' }];
   }
   const trade = (await getTrade(ctx.db, tradeId))!;
+  // Upfront fee: a fresh fee address per trade from the operator watch-only fee wallet.
+  let fee: { sats: bigint; address: string; index: number } | undefined;
+  if (trade.fee_sats > 0 && ctx.cfg.commissionXpub) {
+    const r = await ctx.db.prepare('SELECT COALESCE(MAX(fee_index), -1) + 1 AS n FROM trades').first<{ n: number }>();
+    const index = r?.n ?? 0;
+    fee = { sats: BigInt(trade.fee_sats), address: feeAddress(ctx.cfg.commissionXpub, ctx.net, index), index };
+  }
   await transition(ctx.db, {
     tradeId,
     from: 'KEY_SETUP',
@@ -203,7 +238,9 @@ export async function confirmAddress(ctx: ServiceCtx, userId: number, tradeId: s
     actorId: 0,
     action: 'params_locked',
     now,
-    set: { sql: 'params_locked_at = ?', params: [now] },
+    set: fee
+      ? { sql: 'params_locked_at = ?, fee_index = ?, fee_address = ?', params: [now, fee.index, fee.address] }
+      : { sql: 'params_locked_at = ?', params: [now] },
     followUps: (g, gp) => [
       ctx.db
         .prepare(`INSERT OR REPLACE INTO scheduled_jobs (trade_id, next_poll_at, failures) SELECT ?, ?, 0 WHERE ${g}`)
@@ -212,12 +249,18 @@ export async function confirmAddress(ctx: ServiceCtx, userId: number, tradeId: s
   });
   const s = signerIds(parts);
   const out: Notice[] = signers
-    .filter((p) => p.role !== 'buyer')
+    .filter((p) => p.role !== 'buyer' && !isOperator(ctx, p.telegram_user_id))
     .map((p) => ({
       chatId: p.telegram_user_id,
       text: `🔐 Handel #${tradeId}: Alle haben das Treuhand-Konto bestätigt. Jetzt ist der Käufer mit der Einzahlung dran – du wirst benachrichtigt, sobald das Geld angekommen ist.`,
     }));
-  out.push({ chatId: s.buyer!, ...depositMessage(tradeId, BigInt(trade.amount_sats), m.address, ctx.net.name) });
+  out.push({ chatId: s.buyer!, ...depositMessage(tradeId, BigInt(trade.amount_sats), m.address, ctx.net.name, fee) });
+  out.push(
+    ...adminNotices(
+      ctx,
+      `Handel #${tradeId} wartet auf Einzahlung (${formatBtc(BigInt(trade.amount_sats))} BTC${fee ? `, Gebühr ${formatBtc(fee.sats)} BTC an ${fee.address}` : ''}).`,
+    ),
+  );
   return out;
 }
 

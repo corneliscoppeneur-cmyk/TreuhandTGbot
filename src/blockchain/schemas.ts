@@ -1,5 +1,5 @@
 /** Strict response validation for Esplora. Anything unexpected is treated as an invalid response. */
-import type { ChainUtxo, Outspend, TxStatus } from './provider.ts';
+import type { AddressReceived, ChainUtxo, Outspend, TxStatus } from './provider.ts';
 import { ProviderError } from './provider.ts';
 
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -77,4 +77,14 @@ export function parseBlockStatus(v: unknown): boolean {
   const o = obj(v, 'block status');
   if (typeof o.in_best_chain !== 'boolean') bad('block.in_best_chain');
   return o.in_best_chain;
+}
+
+export function parseAddressReceived(v: unknown): AddressReceived {
+  const o = obj(v, 'address');
+  const chain = obj(o.chain_stats, 'chain_stats');
+  const mempool = obj(o.mempool_stats, 'mempool_stats');
+  return {
+    confirmedSats: BigInt(nonNegInt(chain.funded_txo_sum, 'chain_stats.funded_txo_sum')),
+    mempoolSats: BigInt(nonNegInt(mempool.funded_txo_sum, 'mempool_stats.funded_txo_sum')),
+  };
 }

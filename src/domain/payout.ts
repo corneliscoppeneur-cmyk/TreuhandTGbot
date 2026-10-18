@@ -35,6 +35,7 @@ import { commissionSats, formatBps } from './fees.ts';
 import { escrowFromRow } from './keys.ts';
 import { ROLE_LABEL_DE } from './permissions.ts';
 import { authorize, groupNotice, isSigningRole, signerIds } from './trade.ts';
+import { isOperator } from './operator.ts';
 
 export const RECIPIENT_ROLE: Record<PayoutKind, 'buyer' | 'seller'> = { release: 'seller', refund: 'buyer' };
 
@@ -103,7 +104,7 @@ Wohin soll das Geld? Bitte gib eine Empfangsadresse aus deiner Wallet an (in Spa
       buttons: [[{ text: '📥 Empfangsadresse angeben', data: `t:${trade.id}:addr`, style: 'primary' as const }]],
     },
     ...[s.buyer, s.seller, s.arbiter]
-      .filter((id): id is number => id !== undefined && id !== recipient)
+      .filter((id): id is number => id !== undefined && id !== recipient && !isOperator(ctx, id))
       .map((chatId) => ({
         chatId,
         text: `⏳ Handel #${trade.id}: ${label} angefordert. Sobald der Empfänger seine Adresse angibt, bekommst du die Auszahlung zum Unterschreiben.`,
@@ -182,7 +183,9 @@ export async function submitPayoutAddress(ctx: ServiceCtx, userId: number, trade
       utxos,
       amountSats: amount,
       recipientAddress: address,
-      commissionSats: commissionSats(amount, kind === 'release' ? a.trade.commission_bps : a.trade.refund_commission_bps),
+      // fee already paid upfront at deposit → no commission output in the payout
+      commissionSats:
+        a.trade.fee_sats > 0 ? 0n : commissionSats(amount, kind === 'release' ? a.trade.commission_bps : a.trade.refund_commission_bps),
       commissionAddress: ctx.cfg.commissionAddress,
       feeRateSatVb: feeRate,
       maxFeeRateSatVb: ctx.cfg.maxFeeRateSatVb,
@@ -235,13 +238,21 @@ export async function submitPayoutAddress(ctx: ServiceCtx, userId: number, trade
   return psbtNotices(ctx, a.trade, session);
 }
 
+/** After an arbiter decision the arbiter signs; otherwise buyer + seller sign and the operator is not bothered. */
+async function hasResolvedDispute(ctx: ServiceCtx, tradeId: string): Promise<boolean> {
+  return (
+    (await ctx.db.prepare(`SELECT 1 AS x FROM disputes WHERE trade_id = ? AND status = 'resolved' LIMIT 1`).bind(tradeId).first()) !== null
+  );
+}
+
+/** Signing parties to inform about a payout; the operator-arbiter only when a dispute decided the payout. */
+function payoutChats(ctx: ServiceCtx, ids: (number | undefined)[], disputed: boolean): number[] {
+  return ids.filter((x): x is number => x !== undefined && (disputed || !isOperator(ctx, x)));
+}
+
 async function psbtNotices(ctx: ServiceCtx, trade: TradeRow, session: SessionRow): Promise<Notice[]> {
   const s = signerIds(await listParticipants(ctx.db, trade.id));
-  const disputed =
-    (await ctx.db
-      .prepare(`SELECT decision FROM disputes WHERE trade_id = ? AND status = 'resolved' ORDER BY id DESC LIMIT 1`)
-      .bind(trade.id)
-      .first<{ decision: string }>()) !== null;
+  const disputed = await hasResolvedDispute(ctx, trade.id);
   const expected = disputed ? `${ROLE_LABEL_DE[RECIPIENT_ROLE[session.kind]]} + Schlichter` : 'Käufer + Verkäufer';
   const summary = sessionSummary(trade, session, ctx.net.name, expected);
   const inline = session.base_psbt.length < TELEGRAM_MAX_MESSAGE_CHARS - 300;
@@ -249,23 +260,21 @@ async function psbtNotices(ctx: ServiceCtx, trade: TradeRow, session: SessionRow
     [{ text: '✍️ Signierte PSBT hochladen', data: `s:${session.id}:up`, style: 'primary' as const }],
     [{ text: '📋 txid kopieren', copy: session.txid }],
   ];
-  return [s.buyer, s.seller, s.arbiter]
-    .filter((x): x is number => x !== undefined)
-    .flatMap((chatId) => [
-      { chatId, ...summary },
-      {
-        chatId,
-        // PSBT as tap-to-copy code block (if short) plus as .psbt file for the wallet
-        ...(inline
-          ? {
-              text: `${signGuide().text}\n\n${session.base_psbt}`,
-              html: `${signGuide().html}\n\n${b('Auszahlungs-Entwurf als Text')} (antippen = kopieren):\n${pre(session.base_psbt)}`,
-            }
-          : signGuide()),
-        document: { filename: `trade-${trade.id}-${session.id}.psbt`, content: session.base_psbt },
-        buttons,
-      },
-    ]);
+  return payoutChats(ctx, [s.buyer, s.seller, s.arbiter], disputed).flatMap((chatId) => [
+    { chatId, ...summary },
+    {
+      chatId,
+      // PSBT as tap-to-copy code block (if short) plus as .psbt file for the wallet
+      ...(inline
+        ? {
+            text: `${signGuide().text}\n\n${session.base_psbt}`,
+            html: `${signGuide().html}\n\n${b('Auszahlungs-Entwurf als Text')} (antippen = kopieren):\n${pre(session.base_psbt)}`,
+          }
+        : signGuide()),
+      document: { filename: `trade-${trade.id}-${session.id}.psbt`, content: session.base_psbt },
+      buttons,
+    },
+  ]);
 }
 
 /** Imports a signed PSBT: full re-validation, store signatures, finalize when 2 of 3 are present. */
@@ -328,7 +337,11 @@ export async function submitSignedPsbt(ctx: ServiceCtx, userId: number, sessionI
     .bind(session.id)
     .first<{ n: number }>();
   const parts = await listParticipants(ctx.db, session.trade_id);
-  const signerChats = parts.filter((p) => isSigningRole(p.role)).map((p) => p.telegram_user_id);
+  const signerChats = payoutChats(
+    ctx,
+    parts.filter((p) => isSigningRole(p.role)).map((p) => p.telegram_user_id),
+    await hasResolvedDispute(ctx, session.trade_id),
+  );
   const who = [...verified.roles].map((r) => ROLE_LABEL_DE[r]).join(', ');
   if ((stored?.n ?? 0) < 2) {
     return signerChats.map((chatId) => ({
@@ -455,7 +468,7 @@ export async function broadcastSession(ctx: ServiceCtx, actorId: number, session
   const parts = await listParticipants(ctx.db, trade.id);
   return [
     ...parts
-      .filter((p) => isSigningRole(p.role))
+      .filter((p) => isSigningRole(p.role) && !isOperator(ctx, p.telegram_user_id))
       .map((p) => ({
         chatId: p.telegram_user_id,
         ...sentMessage(trade.id, txid, ctx.net.name),

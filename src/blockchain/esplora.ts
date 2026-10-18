@@ -1,6 +1,14 @@
-import type { BlockchainProvider, ChainUtxo, Outspend, TxStatus } from './provider.ts';
+import type { AddressReceived, BlockchainProvider, ChainUtxo, Outspend, TxStatus } from './provider.ts';
 import { ProviderError } from './provider.ts';
-import { parseBlockStatus, parseFeeEstimates, parseHeight, parseOutspend, parseStatus, parseUtxos } from './schemas.ts';
+import {
+  parseAddressReceived,
+  parseBlockStatus,
+  parseFeeEstimates,
+  parseHeight,
+  parseOutspend,
+  parseStatus,
+  parseUtxos,
+} from './schemas.ts';
 
 export type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -78,6 +86,10 @@ export class EsploraProvider implements BlockchainProvider {
 
   async getAddressUtxos(address: string): Promise<ChainUtxo[]> {
     return parseUtxos(await this.json(`/address/${encodeURIComponent(address)}/utxo`));
+  }
+
+  async getAddressReceived(address: string): Promise<AddressReceived> {
+    return parseAddressReceived(await this.json(`/address/${encodeURIComponent(address)}`));
   }
 
   async getTxStatus(txid: string): Promise<TxStatus | null> {

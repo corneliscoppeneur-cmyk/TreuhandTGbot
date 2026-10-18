@@ -20,6 +20,11 @@ export interface TradeRow {
   params_locked_at: number | null;
   group_chat_id: number | null;
   review_reason: string | null;
+  /** Upfront fee (operator fee wallet), 0 if the fee is taken from the payout instead. */
+  fee_sats: number;
+  fee_index: number | null;
+  fee_address: string | null;
+  fee_paid_at: number | null;
   created_at: number;
   updated_at: number;
 }

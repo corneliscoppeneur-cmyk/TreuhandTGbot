@@ -5,6 +5,7 @@ import type { Notice, ServiceCtx } from './context.ts';
 import { UserError } from './context.ts';
 import { ROLE_LABEL_DE, SIGNING_ROLES, type Role } from './permissions.ts';
 import { authorize, maybeStartAgreement } from './trade.ts';
+import { isOperator } from './operator.ts';
 
 export interface CreatedInvite {
   link: string;
@@ -21,6 +22,9 @@ const JOINABLE: Record<'signer' | 'other', string[]> = {
 
 export async function createInvite(ctx: ServiceCtx, userId: number, tradeId: string, role: Role): Promise<CreatedInvite> {
   const a = await authorize(ctx, userId, tradeId, 'invite');
+  if (role === 'arbiter' && ctx.cfg.operatorId !== null) {
+    throw new UserError('Der Schlichter ist bei diesem Bot automatisch der Betreiber – du musst niemanden einladen.');
+  }
   const signer = SIGNING_ROLES.has(role);
   if (!JOINABLE[signer ? 'signer' : 'other'].includes(a.trade.status)) {
     throw new UserError('In diesem Status sind keine Einladungen für diese Rolle möglich.');
@@ -171,7 +175,7 @@ export async function submitAccessCode(ctx: ServiceCtx, userId: number, inviteId
 
   const parts = await listParticipants(ctx.db, inv.trade_id);
   const notices: Notice[] = parts
-    .filter((p) => p.telegram_user_id !== userId && SIGNING_ROLES.has(p.role))
+    .filter((p) => p.telegram_user_id !== userId && SIGNING_ROLES.has(p.role) && !isOperator(ctx, p.telegram_user_id))
     .map((p) => ({
       chatId: p.telegram_user_id,
       text: `Handel #${inv.trade_id}: Neuer Teilnehmer als ${ROLE_LABEL_DE[inv.role]} beigetreten.`,

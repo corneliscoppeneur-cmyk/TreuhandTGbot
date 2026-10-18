@@ -20,10 +20,17 @@ export interface Outspend {
   spendingTxid: string | null;
 }
 
+/** Total ever received by an address (spends by the owner do not reduce it). */
+export interface AddressReceived {
+  confirmedSats: bigint;
+  mempoolSats: bigint;
+}
+
 export interface BlockchainProvider {
   readonly name: string;
   getTipHeight(): Promise<number>;
   getAddressUtxos(address: string): Promise<ChainUtxo[]>;
+  getAddressReceived(address: string): Promise<AddressReceived>;
   /** null = transaction unknown to the provider (never seen or dropped). */
   getTxStatus(txid: string): Promise<TxStatus | null>;
   getOutspend(txid: string, vout: number): Promise<Outspend>;

@@ -30,6 +30,12 @@ export interface Env {
   ENABLE_AUTOMATIC_BROADCAST: string;
   ENABLE_CUSTODIAL_FEATURES: string;
   ADMIN_TELEGRAM_IDS?: string;
+  /** Operator mode: the operator is automatically the arbiter (third key) of every trade. */
+  OPERATOR_TELEGRAM_ID?: string;
+  /** Operator arbiter key expression [fp/48h/coin h/acct h/2h]tpub… (public, watch-only). */
+  OPERATOR_ARBITER_KEY?: string;
+  /** Operator fee wallet: BIP-84 account tpub/vpub (public). One fresh fee address per trade. */
+  COMMISSION_XPUB?: string;
   DATA_RETENTION_DAYS: string;
 }
 
@@ -54,6 +60,11 @@ export interface AppConfig {
   pollMaxTradesPerRun: number;
   automaticBroadcast: boolean;
   adminIds: ReadonlySet<number>;
+  /** Telegram id of the operator acting as automatic arbiter, or null (arbiter is invited). */
+  operatorId: number | null;
+  operatorArbiterKey: string | null;
+  /** Fee wallet xpub: if set, the fee is paid upfront at deposit to a per-trade address (cannot be bypassed). */
+  commissionXpub: string | null;
   dataRetentionDays: number;
 }
 
@@ -146,6 +157,16 @@ export function parseConfig(env: Record<string, unknown>): AppConfig {
 
   const commissionAddress = req(env, 'COMMISSION_ADDRESS');
 
+  const operatorRaw = opt(env, 'OPERATOR_TELEGRAM_ID');
+  const operatorArbiterKey = opt(env, 'OPERATOR_ARBITER_KEY');
+  if ((operatorRaw === null) !== (operatorArbiterKey === null)) {
+    throw new ConfigError('OPERATOR_TELEGRAM_ID and OPERATOR_ARBITER_KEY must be set together');
+  }
+  if (operatorRaw !== null && !/^\d{1,15}$/.test(operatorRaw)) throw new ConfigError('OPERATOR_TELEGRAM_ID must be numeric');
+  const operatorId = operatorRaw === null ? null : Number(operatorRaw);
+  // the operator always receives admin notices
+  if (operatorId !== null) adminIds.add(operatorId);
+
   return {
     botToken,
     webhookSecret,
@@ -165,6 +186,9 @@ export function parseConfig(env: Record<string, unknown>): AppConfig {
     pollMaxTradesPerRun: int(env, 'POLL_MAX_TRADES_PER_RUN', 1, 20),
     automaticBroadcast: bool(env, 'ENABLE_AUTOMATIC_BROADCAST'),
     adminIds,
+    operatorId,
+    operatorArbiterKey,
+    commissionXpub: opt(env, 'COMMISSION_XPUB'),
     dataRetentionDays: int(env, 'DATA_RETENTION_DAYS', 30, 3650),
   };
 }

@@ -6,6 +6,7 @@ import type { Notice, ServiceCtx } from './context.ts';
 import { UserError } from './context.ts';
 import { PermissionError, requirePermission, SIGNING_ROLES, type Action, type Role } from './permissions.ts';
 import { FUNDS_AT_RISK_STATES, type TradeState } from './state-machine.ts';
+import { addOperatorStmts, isOperator, operatorKeyStmt, operatorMode, upfrontFeeSats } from './operator.ts';
 
 export interface NewTradeInput {
   title: string;
@@ -30,14 +31,19 @@ export async function createTrade(ctx: ServiceCtx, userId: number, input: NewTra
   const title = cleanText(input.title, MAX_TITLE_CHARS, 'Titel');
   const description = cleanText(input.description, MAX_DESCRIPTION_CHARS, 'Beschreibung');
   const terms = cleanText(input.terms, MAX_TERMS_CHARS, 'Bedingungen');
+  if (operatorMode(ctx) && userId === ctx.cfg.operatorId) {
+    throw new UserError(
+      'Als Betreiber bist du automatisch Schlichter in jedem Handel und kannst nicht Käufer oder Verkäufer sein. Bitte ein anderes Telegram-Konto nutzen.',
+    );
+  }
   const now = ctx.now();
   const id = newTradeId();
   await ctx.db.batch([
     ctx.db
       .prepare(
         `INSERT INTO trades (id, creator_id, title, description, terms, amount_sats, network, commission_bps,
-           refund_commission_bps, contract_version, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INVITING', ?, ?)`,
+           refund_commission_bps, contract_version, fee_sats, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INVITING', ?, ?)`,
       )
       .bind(
         id,
@@ -50,12 +56,14 @@ export async function createTrade(ctx: ServiceCtx, userId: number, input: NewTra
         ctx.cfg.commissionBps,
         ctx.cfg.refundCommissionBps,
         CONTRACT_VERSION,
+        Number(upfrontFeeSats(ctx, input.amountSats)),
         now,
         now,
       ),
     ctx.db
       .prepare('INSERT INTO participants (trade_id, telegram_user_id, role, joined_at) VALUES (?, ?, ?, ?)')
       .bind(id, userId, input.creatorRole, now),
+    ...(operatorMode(ctx) ? addOperatorStmts(ctx, id, now) : []),
     auditStmt(ctx.db, { tradeId: id, actorId: userId, action: 'trade_created', to: 'INVITING', now }),
   ]);
   const t = await getTrade(ctx.db, id);
@@ -102,7 +110,11 @@ export function agreementContent(trade: TradeRow, parts: ParticipantRow[]): stri
     amount_sats: String(trade.amount_sats),
     commission_bps_release: trade.commission_bps,
     commission_bps_refund: trade.refund_commission_bps,
-    fee_policy: 'v1: miner fee paid by payout recipient; commission is a separate output; changes require new signatures',
+    fee_policy:
+      trade.fee_sats > 0
+        ? 'v2: service fee paid upfront by the buyer at deposit to the operator fee address, non-refundable; miner fee paid by payout recipient'
+        : 'v1: miner fee paid by payout recipient; commission is a separate output; changes require new signatures',
+    upfront_fee_sats: String(trade.fee_sats),
     buyer: s.buyer,
     seller: s.seller,
     arbiter: s.arbiter,
@@ -129,6 +141,15 @@ export async function maybeStartAgreement(ctx: ServiceCtx, tradeId: string): Pro
     now,
     set: { sql: 'agreement_hash = ?', params: [hash] },
     followUps: (g, gp) => [
+      ...(operatorMode(ctx)
+        ? [
+            ctx.db
+              .prepare(
+                `UPDATE participants SET agreed_hash = ?, agreed_at = ? WHERE trade_id = ? AND telegram_user_id = ? AND role = 'arbiter' AND ${g}`,
+              )
+              .bind(hash, now, tradeId, ctx.cfg.operatorId, ...gp),
+          ]
+        : []),
       ctx.db
         .prepare(
           `INSERT INTO trade_agreements (trade_id, version, terms_hash, content_json, created_at)
@@ -137,14 +158,16 @@ export async function maybeStartAgreement(ctx: ServiceCtx, tradeId: string): Pro
         .bind(tradeId, tradeId, hash, content, now, ...gp),
     ],
   });
-  return [s.buyer, s.seller, s.arbiter].map((chatId) => ({
-    chatId,
-    text:
-      `👥 Handel #${tradeId}: Alle drei Beteiligten sind dabei.\n\n` +
-      'Bitte lies jetzt die Bedingungen in Ruhe durch. Wenn alles stimmt, tippe auf „Akzeptieren“. ' +
-      'Erst wenn alle drei zugestimmt haben, geht es weiter.',
-    buttons: [[{ text: '📜 Bedingungen prüfen', data: `t:${tradeId}:terms`, style: 'primary' as const }]],
-  }));
+  return [s.buyer, s.seller, s.arbiter]
+    .filter((chatId) => !isOperator(ctx, chatId))
+    .map((chatId) => ({
+      chatId,
+      text:
+        `👥 Handel #${tradeId}: Alle drei Beteiligten sind dabei.\n\n` +
+        'Bitte lies jetzt die Bedingungen in Ruhe durch. Wenn alles stimmt, tippe auf „Akzeptieren“. ' +
+        'Erst wenn alle drei zugestimmt haben, geht es weiter.',
+      buttons: [[{ text: '📜 Bedingungen prüfen', data: `t:${tradeId}:terms`, style: 'primary' as const }]],
+    }));
 }
 
 export async function agreeTerms(ctx: ServiceCtx, userId: number, tradeId: string, shownHash: string): Promise<Notice[]> {
@@ -173,19 +196,31 @@ export async function agreeTerms(ctx: ServiceCtx, userId: number, tradeId: strin
       actorId: userId,
       action: 'all_agreed',
       now,
+      followUps: operatorMode(ctx)
+        ? (g, gp) => [
+            operatorKeyStmt(ctx.db, ctx, tradeId, now, g, gp),
+            ctx.db
+              .prepare(
+                `UPDATE participants SET address_verified_at = ? WHERE trade_id = ? AND telegram_user_id = ? AND role = 'arbiter' AND ${g}`,
+              )
+              .bind(now, tradeId, ctx.cfg.operatorId, ...gp),
+          ]
+        : undefined,
     });
-    return signers.map((p) => ({
-      chatId: p.telegram_user_id,
-      text:
-        `✅ Handel #${tradeId}: Alle haben den Bedingungen zugestimmt.\n\n` +
-        'Jetzt wird das gemeinsame Treuhand-Konto gebaut. Dafür sendet jeder den öffentlichen Schlüssel aus seiner Wallet ' +
-        '(ungefährlich, wie eine Kontonummer).\n\n' +
-        '⚠️ Niemals deine Wiederherstellungswörter senden – die gehören nur dir.',
-      buttons: [
-        [{ text: '🔑 Schlüssel senden', data: `t:${tradeId}:key`, style: 'primary' as const }],
-        [{ text: '👛 Noch keine Wallet? Anleitung', data: 'm:wallet' }],
-      ],
-    }));
+    return signers
+      .filter((p) => !isOperator(ctx, p.telegram_user_id))
+      .map((p) => ({
+        chatId: p.telegram_user_id,
+        text:
+          `✅ Handel #${tradeId}: Alle haben den Bedingungen zugestimmt.\n\n` +
+          'Jetzt wird das gemeinsame Treuhand-Konto gebaut. Dafür sendet jeder den öffentlichen Schlüssel aus seiner Wallet ' +
+          '(ungefährlich, wie eine Kontonummer).\n\n' +
+          '⚠️ Niemals deine Wiederherstellungswörter senden – die gehören nur dir.',
+        buttons: [
+          [{ text: '🔑 Schlüssel senden', data: `t:${tradeId}:key`, style: 'primary' as const }],
+          [{ text: '👛 Noch keine Wallet? Anleitung', data: 'm:wallet' }],
+        ],
+      }));
   }
   const missing = signers.filter((p) => p.agreed_hash !== a.trade.agreement_hash).length;
   return [
