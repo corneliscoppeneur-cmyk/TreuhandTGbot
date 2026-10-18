@@ -206,3 +206,59 @@ describe('operator is the automatic arbiter', () => {
     expect(second.escrow).toMatch(/^tb1q/);
   });
 });
+
+describe('admin tools', () => {
+  async function reviewTrade(h: Harness) {
+    const { tradeId, escrow } = await readyToFund(h);
+    await fund(h, escrow);
+    h.chain.utxos.get(escrow)![0]!.blockHash = 'ff'.repeat(32); // reorg → NEEDS_REVIEW
+    await h.cron(3600);
+    expect((await h.trade(tradeId)).status).toBe('NEEDS_REVIEW');
+    return tradeId;
+  }
+
+  it('lists problem cases with a direct button; non-admins are refused', async () => {
+    const h = opHarness();
+    const id = await reviewTrade(h);
+    const notice = h.to(OPERATOR).find((m) => m.text.includes('braucht Prüfung'))!;
+    expect(notice.buttons.find((b) => b.data === `a:${id}:view`)).toBeDefined();
+    await h.text(OPERATOR, '/admin');
+    expect(h.last(OPERATOR).buttons.some((b) => b.data === `a:${id}:view`)).toBe(true);
+    await h.text(BUYER, '/admin');
+    expect(h.last(BUYER).text).toMatch(/Nur für Admins/);
+    await h.click(BUYER, `a:${id}:resume`);
+    expect((await h.trade(id)).status).toBe('NEEDS_REVIEW');
+  });
+
+  it('resume returns the trade to FUNDED', async () => {
+    const h = opHarness();
+    const id = await reviewTrade(h);
+    await h.click(OPERATOR, `a:${id}:resume`);
+    expect((await h.trade(id)).status).toBe('FUNDED');
+  });
+
+  it('arbitration lets the operator decide; fail closes the case', async () => {
+    const h = opHarness();
+    const id = await reviewTrade(h);
+    await h.click(OPERATOR, `a:${id}:arb`);
+    expect((await h.trade(id)).status).toBe('ARBITRATION');
+    await h.click(OPERATOR, `d:${id}:release`);
+    await h.text(OPERATOR, 'Reorg geprüft, alles in Ordnung');
+    expect((await h.trade(id)).status).toBe('RELEASE_REQUESTED');
+
+    const h2 = opHarness();
+    const id2 = await reviewTrade(h2);
+    await h2.click(OPERATOR, `a:${id2}:fail`);
+    expect((await h2.trade(id2)).status).toBe('FAILED');
+  });
+
+  it('blocked users can be unblocked by the admin', async () => {
+    const h = opHarness();
+    await h.text(BUYER, '/start');
+    h.db.raw.prepare('UPDATE users SET is_blocked = 1 WHERE telegram_user_id = ?').run(BUYER);
+    await h.click(OPERATOR, 'a:blocked');
+    expect(h.last(OPERATOR).buttons.some((b) => b.data === `a:unblock:${BUYER}`)).toBe(true);
+    await h.click(OPERATOR, `a:unblock:${BUYER}`);
+    expect(h.db.raw.prepare('SELECT is_blocked FROM users WHERE telegram_user_id = ?').get(BUYER)).toEqual({ is_blocked: 0 });
+  });
+});

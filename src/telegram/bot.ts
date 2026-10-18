@@ -57,6 +57,16 @@ const HELP_BUTTONS: Button[][] = [
 ];
 import { sendContent } from './send.ts';
 import { adminNotices, operatorMode } from '../domain/operator.ts';
+import {
+  arbitrateTrade,
+  attentionList,
+  blockedUsers,
+  failTrade,
+  requireAdmin,
+  resumeTrade,
+  statsLine,
+  unblockUser,
+} from '../domain/admin.ts';
 
 const TRADE_ID_RE = /^[A-Z0-9]{8}$/;
 
@@ -237,7 +247,43 @@ export function createBot(svc: ServiceCtx): Bot {
   }
 
   async function showMenu(ctx: Context) {
-    await reply(ctx, MAIN_MENU, mainMenu());
+    const admin = ctx.from && svc.cfg.adminIds.has(ctx.from.id);
+    await reply(ctx, MAIN_MENU, admin ? [...mainMenu(), [{ text: '🛎 Admin', data: 'a:home', style: 'primary' }]] : mainMenu());
+  }
+
+  // ---------- admin ----------
+
+  async function showAdmin(ctx: Context, userId: number) {
+    const list = await attentionList(svc, userId);
+    const rows: Button[][] = list.map((t) => [
+      { text: `${t.status === 'NEEDS_REVIEW' ? '⚠️' : '⚖️'} #${t.id} · ${STATE_LABEL_DE[t.status]}`, data: `a:${t.id}:view` },
+    ]);
+    rows.push([{ text: '🔓 Gesperrte Nutzer', data: 'a:blocked' }], nav());
+    await reply(
+      ctx,
+      html(
+        `${b('🛎 Admin')}\n${esc(await statsLine(svc))}\n\n${list.length ? 'Handel, die dich brauchen:' : '✅ Gerade braucht kein Handel deine Hilfe.'}`,
+      ),
+      rows,
+    );
+  }
+
+  async function showAdminTrade(ctx: Context, userId: number, tradeId: string) {
+    requireAdmin(svc, userId);
+    const t = await getTrade(db, tradeId);
+    if (!t) throw new UserError('Handel nicht gefunden.');
+    const parts = await listParticipants(db, tradeId);
+    const rows: Button[][] = [];
+    if (t.status === 'NEEDS_REVIEW') {
+      rows.push([{ text: '▶️ Fortsetzen (Geld ist da)', data: `a:${tradeId}:resume`, style: 'success' }]);
+      if (operatorMode(svc) && userId === svc.cfg.operatorId)
+        rows.push([{ text: '⚖️ Als Schlichter entscheiden', data: `a:${tradeId}:arb`, style: 'primary' }]);
+      rows.push([{ text: '✖️ Als fehlgeschlagen schließen', data: `a:${tradeId}:fail`, style: 'danger' }]);
+    }
+    if (t.status === 'DISPUTED' || t.status === 'ARBITRATION')
+      rows.push([{ text: '⚖️ Streitfall bearbeiten', data: `d:${tradeId}:take`, style: 'primary' }]);
+    rows.push([{ text: '⬅️ Admin', data: 'a:home' }]);
+    await reply(ctx, tradeView(t, parts, null), rows);
   }
 
   async function showTrade(ctx: Context, userId: number, tradeId: string) {
@@ -368,6 +414,7 @@ export function createBot(svc: ServiceCtx): Bot {
     }),
   );
   bot.command('disputes', (ctx) => guard(ctx, () => showDisputes(ctx, ctx.from!.id)));
+  bot.command('admin', (ctx) => guard(ctx, () => showAdmin(ctx, ctx.from!.id)));
   bot.command('status', (ctx) =>
     guard(ctx, async () => {
       const id = ctx.match.trim().replace(/^#/, '').toUpperCase();
@@ -469,6 +516,23 @@ export function createBot(svc: ServiceCtx): Bot {
       if ((m = /^t:([A-Z0-9]{8}):([a-z]+)(?::([A-Za-z0-9_-]{1,20}))?$/.exec(data))) return onTradeAction(ctx, userId, m[1]!, m[2]!, m[3]);
       if ((m = /^s:([A-Za-z0-9_-]{16}):(up|bc|show)$/.exec(data))) return onSessionAction(ctx, userId, m[1]!, m[2]!);
       if ((m = /^d:([A-Z0-9]{8}):(take|release|refund|ask)$/.exec(data))) return onDisputeAction(ctx, userId, m[1]!, m[2]!);
+      if (data === 'a:home') return showAdmin(ctx, userId);
+      if (data === 'a:blocked') {
+        const users = await blockedUsers(svc, userId);
+        return void (await reply(ctx, users.length ? `Gesperrte Nutzer: ${users.length}` : 'Niemand ist gesperrt.', [
+          ...users.map((u): Button[] => [
+            { text: `🔓 ${u.username ? '@' + u.username : u.telegram_user_id} entsperren`, data: `a:unblock:${u.telegram_user_id}` },
+          ]),
+          [{ text: '⬅️ Admin', data: 'a:home' }],
+        ]));
+      }
+      if ((m = /^a:unblock:(\d{1,15})$/.exec(data))) return send(await unblockUser(svc, userId, Number(m[1])));
+      if ((m = /^a:([A-Z0-9]{8}):(view|resume|arb|fail)$/.exec(data))) {
+        if (m[2] === 'view') return showAdminTrade(ctx, userId, m[1]!);
+        if (m[2] === 'resume') return send(await resumeTrade(svc, userId, m[1]!));
+        if (m[2] === 'arb') return send(await arbitrateTrade(svc, userId, m[1]!));
+        return send(await failTrade(svc, userId, m[1]!));
+      }
     }),
   );
 

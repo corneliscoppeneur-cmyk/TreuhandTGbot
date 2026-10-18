@@ -128,7 +128,7 @@ async function toReview(ctx: ServiceCtx, tradeId: string, reason: string): Promi
   }
   return [
     ...(await notifySigners(ctx, t, `⚠️ Handel #${tradeId}: Manuelle Prüfung erforderlich: ${reason}. Keine automatische Freigabe.`)),
-    ...adminNotices(ctx, `⚠️ Handel #${tradeId} braucht Prüfung: ${reason}`),
+    ...adminNotices(ctx, `⚠️ Handel #${tradeId} braucht Prüfung: ${reason}`, [[{ text: '🛎 Fall öffnen', data: `a:${tradeId}:view` }]]),
   ];
 }
 
