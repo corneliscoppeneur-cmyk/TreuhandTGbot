@@ -75,7 +75,8 @@ export function depositMessage(
       : '') +
     `${b('Wichtig:')}\n` +
     '• Genau diese Summe senden – die Netzwerkgebühr deiner Wallet kommt obendrauf.\n' +
-    '• Zu viel gesendet? Dann wird nichts automatisch weitergeleitet, der Handel wird erst geprüft.\n' +
+    '• Zu wenig gesendet? Dann wartet der Handel, bis der Rest da ist.\n' +
+    '• Zu viel gesendet? Das wird akzeptiert, aber nicht erstattet – der Überschuss geht mit der Auszahlung an den Empfänger.\n' +
     '• Der Bot meldet sich, sobald das Geld angekommen und bestätigt ist (meist 10–30 Minuten).\n\n' +
     i('Datenschutz: Bitcoin-Adressen sind öffentlich einsehbar und nicht anonym.');
   return {

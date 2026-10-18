@@ -112,7 +112,7 @@ export function agreementContent(trade: TradeRow, parts: ParticipantRow[]): stri
     commission_bps_refund: trade.refund_commission_bps,
     fee_policy:
       trade.fee_sats > 0
-        ? 'v3: buyer deposits amount + service fee in one payment; the fee is paid to the operator as a separate output of every payout (release or refund), non-refundable; bypassing the bot blocks both parties; miner fee paid by payout recipient'
+        ? 'v3: buyer deposits amount + service fee in one payment; the fee is paid to the operator as a separate output of every payout (release or refund), non-refundable; overpayments are accepted and paid out to the recipient; bypassing the bot blocks both parties; miner fee paid by payout recipient'
         : 'v1: miner fee paid by payout recipient; commission is a separate output; changes require new signatures',
     service_fee_sats: String(trade.fee_sats),
     buyer: s.buyer,

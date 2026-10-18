@@ -200,10 +200,6 @@ async function pollFunding(ctx: ServiceCtx, t: TradeRow, tip: number, out: Notic
   const now = ctx.now();
   const s = signerIds(await listParticipants(ctx.db, t.id));
 
-  if (ev.verdict === 'overpaid') {
-    out.push(...(await toReview(ctx, t.id, `Überzahlung: ${formatBtc(ev.totalSats)} statt ${formatBtc(expected)} BTC`)));
-    return INTERVAL.holding;
-  }
   if (ev.verdict === 'funded') {
     await transition(ctx.db, {
       tradeId: t.id,
@@ -233,7 +229,11 @@ Ab jetzt kann es nur noch mit 2 von 3 Unterschriften bewegt werden.`,
           ]
         : []),
       ...groupNotice(fresh, STATE_LABEL_DE.FUNDED),
-      ...adminNotices(ctx, `Handel #${t.id} ist finanziert (${formatBtc(BigInt(t.amount_sats))} BTC im Treuhand-Konto).`),
+      ...adminNotices(
+        ctx,
+        `Handel #${t.id} ist finanziert (${formatBtc(ev.totalSats)} BTC im Treuhand-Konto)` +
+          (ev.excessSats > 0n ? `, davon ${formatBtc(ev.excessSats)} BTC Überzahlung (geht mit der Auszahlung an den Empfänger).` : '.'),
+      ),
     );
     return INTERVAL.holding;
   }

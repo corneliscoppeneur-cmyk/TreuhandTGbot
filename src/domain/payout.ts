@@ -165,7 +165,8 @@ export async function submitPayoutAddress(ctx: ServiceCtx, userId: number, trade
   const funding = (await listFunding(ctx.db, tradeId)).filter((f) => f.status === 'confirmed');
   const utxos: FundingUtxo[] = funding.map((f) => ({ txid: f.txid, vout: f.vout, valueSats: BigInt(f.value_sats) }));
   // escrow holds trade amount + service fee (fee 0 for trades created before the fee was part of the deposit)
-  if (utxos.reduce((s, u) => s + u.valueSats, 0n) !== BigInt(a.trade.amount_sats) + BigInt(a.trade.fee_sats)) {
+  // overpayments are accepted: the excess goes to the payout recipient
+  if (utxos.reduce((s, u) => s + u.valueSats, 0n) < BigInt(a.trade.amount_sats) + BigInt(a.trade.fee_sats)) {
     throw new UserError('Finanzierungsdaten inkonsistent. Handel wird geprüft.');
   }
 

@@ -57,13 +57,27 @@ describe('funding policy', () => {
     expect((await h.trade(tradeId)).status).toBe('FUNDED');
   });
 
-  it('overpayment stops in NEEDS_REVIEW (no automatic refund)', async () => {
+  it('overpayment is accepted; the excess goes to the payout recipient, the fee stays fixed', async () => {
     const h = new Harness();
     const { tradeId, address } = await readyToFund(h);
     h.chain.pay(address, 'c1'.repeat(32), 1_500_000n);
     await h.cron();
-    expect((await h.trade(tradeId)).status).toBe('NEEDS_REVIEW');
-    expect(h.chain.broadcasts).toHaveLength(0);
+    expect((await h.trade(tradeId)).status).toBe('FUNDING_SEEN');
+    h.chain.tip = 1001;
+    h.chain.confirmAll(address, 1001);
+    await h.cron();
+    expect((await h.trade(tradeId)).status).toBe('FUNDED');
+    await h.click(BUYER, `t:${tradeId}:release`);
+    await h.click(SELLER, `t:${tradeId}:addr`);
+    await h.text(SELLER, testAddress('seller-payout'));
+    const s = h.db.raw.prepare('SELECT outputs_json, miner_fee_sats FROM psbt_sessions WHERE trade_id = ?').get(tradeId) as {
+      outputs_json: string;
+      miner_fee_sats: number;
+    };
+    const outs = JSON.parse(s.outputs_json) as { purpose: string; valueSats: string }[];
+    const fee = BigInt(outs.find((o) => o.purpose === 'commission')!.valueSats);
+    expect(fee).toBe(10_000n);
+    expect(BigInt(outs.find((o) => o.purpose === 'recipient')!.valueSats)).toBe(1_500_000n - fee - BigInt(s.miner_fee_sats));
   });
 
   it('a vanished unconfirmed payment returns to READY_TO_FUND', async () => {
@@ -91,7 +105,7 @@ describe('funding policy', () => {
     expect(evaluateFunding(100n, [u(100n, null)], 10, 1).verdict).toBe('pending');
     expect(evaluateFunding(100n, [u(100n, 10)], 10, 2).verdict).toBe('pending');
     expect(evaluateFunding(100n, [u(100n, 9)], 10, 2).verdict).toBe('funded');
-    expect(evaluateFunding(100n, [u(101n, 9)], 10, 2).verdict).toBe('overpaid');
+    expect(evaluateFunding(100n, [u(101n, 9)], 10, 2).verdict).toBe('funded');
   });
 });
 

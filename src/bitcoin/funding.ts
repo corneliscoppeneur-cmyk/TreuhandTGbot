@@ -1,20 +1,22 @@
 import type { ChainUtxo } from '../blockchain/provider.ts';
 
 /**
- * Funding policy (v1, decided before implementation):
+ * Funding policy (v2, operator decision 2026-10-18):
  * - The escrow address is unique per trade, so every UTXO on it belongs to this trade.
- * - Sum of all UTXOs < amount           → PARTIAL: keep waiting, inform buyer, never proceed.
- * - Sum == amount, not all confirmed    → PENDING (FUNDING_SEEN). 0-conf is never final.
- * - Sum == amount, all ≥ minConf        → FUNDED.
- * - Sum > amount                        → OVERPAID: stop, NEEDS_REVIEW. No automatic refund of the excess.
+ * - Sum of all UTXOs < expected         → PARTIAL: keep waiting, inform buyer, never proceed.
+ * - Sum ≥ expected, not all confirmed   → PENDING (FUNDING_SEEN). 0-conf is never final.
+ * - Sum ≥ expected, all ≥ minConf       → FUNDED. An overpayment is accepted: the excess is part of
+ *   the payout to the recipient (seller on release, buyer on refund); the service fee stays fixed.
  * The PSBT later spends exactly the UTXOs recorded at FUNDED time; nothing else is aggregated.
  */
-export type FundingVerdict = 'none' | 'partial' | 'pending' | 'funded' | 'overpaid';
+export type FundingVerdict = 'none' | 'partial' | 'pending' | 'funded';
 
 export interface FundingEvaluation {
   verdict: FundingVerdict;
   totalSats: bigint;
   confirmedSats: bigint;
+  /** amount above the expected sum (0 if exact) */
+  excessSats: bigint;
   minConfirmations: number;
 }
 
@@ -31,7 +33,7 @@ export function evaluateFunding(expectedSats: bigint, utxos: ChainUtxo[], tipHei
   let verdict: FundingVerdict;
   if (utxos.length === 0) verdict = 'none';
   else if (total < expectedSats) verdict = 'partial';
-  else if (total > expectedSats) verdict = 'overpaid';
-  else verdict = confirmedSats === expectedSats ? 'funded' : 'pending';
-  return { verdict, totalSats: total, confirmedSats, minConfirmations };
+  else verdict = confirmedSats === total ? 'funded' : 'pending';
+  const excessSats = total > expectedSats ? total - expectedSats : 0n;
+  return { verdict, totalSats: total, confirmedSats, excessSats, minConfirmations };
 }
