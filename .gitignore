@@ -14,3 +14,6 @@ token infos.txt
 treuhand vorhaben.txt
 .deploy.secrets
 .e2e*/
+
+# Live operator config (mainnet). Deploy with: npx wrangler deploy --config wrangler.live.jsonc
+wrangler.live.jsonc

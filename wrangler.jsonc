@@ -16,42 +16,50 @@
   "d1_databases": [
     {
       "binding": "DB",
-      // Mainnet DB. Signet test DB: "escrow" (d54e7977-0b0f-4834-8f7b-1b9426deedfa)
-      "database_name": "escrow-mainnet",
-      "database_id": "475d62ee-f287-494d-b057-042a8ca51da7",
+      "database_name": "escrow",
+      // PLACEHOLDER: output of `npx wrangler d1 create escrow` (see docs/DEPLOYMENT.md)
+      "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations",
     },
   ],
 
   // Non-secret configuration. Secrets (TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
   // INVITE_HMAC_SECRET) are set with `wrangler secret put` and never committed.
+  // Values marked PLACEHOLDER must be replaced before deploying (docs/DEPLOYMENT.md).
+  // `npm run validate-config` checks the result.
   "vars": {
-    "TELEGRAM_BOT_USERNAME": "EscrowGerman_bot",
-    "BITCOIN_NETWORK": "mainnet",
-    "ALLOW_MAINNET": "true",
-    // Operator decision 2026-10-18: go live without audit (see docs/DECISIONS.md D13)
-    "MAINNET_RELEASE_CONFIRMATION": "I-HAVE-COMPLETED-THE-MAINNET-CHECKLIST-AND-AUDIT",
+    // PLACEHOLDER: your bot's username from BotFather (without @)
+    "TELEGRAM_BOT_USERNAME": "YourEscrow_bot",
+    // Default: signet test network. Mainnet stays locked until you set ALLOW_MAINNET "true"
+    // and MAINNET_RELEASE_CONFIRMATION (see docs/MAINNET-CHECKLIST.md). Your own responsibility.
+    "BITCOIN_NETWORK": "signet",
+    "ALLOW_MAINNET": "false",
     "SUPPORT_BOT_URL": "https://t.me/GruppennetzwerkKontakt_bot",
     "CRYPTGEON_URL": "https://cryptgeon.org",
     "DEFAULT_COMMISSION_BPS": "300",
     "REFUND_COMMISSION_BPS": "0",
-    // Operator fee address (Sparrow wallet Betreiber-Gebuehren, mainnet)
-    "COMMISSION_ADDRESS": "bc1q4ymdj5939eeexgl27dg7mwa53tttgc479dlure",
+    // PLACEHOLDER: your own fee address for the configured network (tb1... on signet,
+    // bc1... on mainnet), managed in your own wallet. The bot never holds its keys.
+    "COMMISSION_ADDRESS": "REPLACE_WITH_YOUR_FEE_ADDRESS",
     "MIN_CONFIRMATIONS_SIGNET": "1",
     "MIN_CONFIRMATIONS_MAINNET": "3",
     "BLOCKCHAIN_PROVIDER": "esplora",
-    "ESPLORA_PRIMARY_URL": "https://mempool.space/api",
-    "ESPLORA_SECONDARY_URL": "https://blockstream.info/api",
+    "ESPLORA_PRIMARY_URL": "https://mempool.space/signet/api",
+    "ESPLORA_SECONDARY_URL": "https://blockstream.info/signet/api",
     "MAX_FEE_RATE_SAT_VB": "50",
     "MAX_FEE_PERCENT": "5",
     "POLL_MAX_TRADES_PER_RUN": "4",
     "ENABLE_AUTOMATIC_BROADCAST": "false",
     "ENABLE_CUSTODIAL_FEATURES": "false",
-    "ADMIN_TELEGRAM_IDS": "7472753006",
-    "PUBLIC_BASE_URL": "https://btc-telegram-escrow.cornelis-coppeneur.workers.dev",
-    // Operator mode: operator is the automatic arbiter (public key only, see docs/OPERATOR-SETUP.md)
-    "OPERATOR_TELEGRAM_ID": "7472753006",
-    "OPERATOR_ARBITER_KEY": "[0e7e25b4/48h/0h/0h/2h]xpub6EScxMQHkEyrBwp49drJGzeGpvLvzPqzyhBPyykFRMcmetMixE8k5rnPHN4ZoNMLQKpkdMmACiQ2A1xEXN25snw9dDuLDxGitTb2bpsFJNd",
+    // Optional: comma-separated numeric Telegram user ids with /admin access
+    "ADMIN_TELEGRAM_IDS": "",
+    // Optional: https://btc-telegram-escrow.<account>.workers.dev (serves the picture guides)
+    "PUBLIC_BASE_URL": "",
+    // Optional operator mode: the operator is the automatic arbiter. Set both or neither.
+    // OPERATOR_ARBITER_KEY = public key with key origin only, e.g. "[fingerprint/48h/1h/0h/2h]tpub..."
+    // (see docs/OPERATOR-SETUP.md). Never a private key or seed.
+    "OPERATOR_TELEGRAM_ID": "",
+    "OPERATOR_ARBITER_KEY": "",
     "DATA_RETENTION_DAYS": "180",
   },
 }
